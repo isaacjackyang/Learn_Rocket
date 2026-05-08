@@ -1,0 +1,2 @@
+"""Competition-facing agent entrypoints."""
+

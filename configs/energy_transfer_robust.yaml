@@ -1,0 +1,48 @@
+adapter: activerocketpy
+vendor_repo: vendor/ActiveRocketPy
+terminate_on_apogee: true
+strategy_name: energy_aware
+params:
+  estimator_mode: jitter_aware
+  alpha: 0.34
+  balloon_alpha: 0.22
+  jump_threshold_m: 38.0
+  target_selector: energy_aware
+  guidance_mode: energy_aware
+  controller_mode: adaptive
+  kp: 1.05
+  kd: 0.24
+  throttle: 0.86
+  max_tvc: 3.4
+  launch_wait_time: 0.12
+  stabilize_duration: 0.85
+  target_distance_weight: 0.55
+  target_angle_weight: 1.05
+  target_closure_weight: 0.85
+  target_energy_weight: 1.0
+  target_time_weight: 0.72
+  target_crosswind_weight: 0.2
+  target_switch_margin: 0.45
+  target_switch_cooldown_steps: 5
+  target_lock_duration: 7
+  switching_penalty: 1.35
+  wind_comp_gain: 0.3
+  desired_speed: 1.45
+  desired_speed_floor: 1.2
+  intercept_lead_scale: 0.8
+  climb_bias_altitude_m: 1000.0
+  climb_vertical_gain: 0.45
+  climb_velocity_floor_mps: 42.0
+  ascent_turn_scale: 0.18
+  ascent_throttle_floor: 0.9
+  minimum_intercept_altitude_m: 260.0
+  balloon_radius_m: 28.0
+  release_window_s: 28.0
+  position_noise_std_m: 2.0
+  velocity_noise_std_mps: 0.2
+  rocket_position_noise_std_m: 0.7
+  rocket_velocity_noise_std_mps: 0.1
+  wind_sensor_noise_std_mps: 0.3
+  wind_surface_mps: 2.0
+  wind_shear_mps: 4.5
+  wind_gust_mps: 0.5

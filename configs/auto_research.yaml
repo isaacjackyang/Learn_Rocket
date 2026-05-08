@@ -1,0 +1,156 @@
+adapter: stage_router
+
+default_adapter_profile: competition_platform_stage
+
+adapter_profiles:
+  competition_platform_stage:
+    adapter: competition_platform
+  balloon_challenge_s0:
+    adapter: balloon_challenge
+    challenge_repo_root: .external/BalloonPoppingChallenge
+    challenge_scenario_number: 0
+  balloon_challenge_s1:
+    adapter: balloon_challenge
+    challenge_repo_root: .external/BalloonPoppingChallenge
+    challenge_scenario_number: 1
+
+strategies:
+  - baseline_pid
+  - greedy_intercept
+  - predictive_intercept
+  - score_based
+  - mpc_light
+  - cem_planner
+  - energy_aware
+  - rl_policy_wrapper
+
+fixed_params:
+  challenge_repo_root: .external/BalloonPoppingChallenge
+  challenge_reward_mode: popped_count
+
+stage_policy:
+  launch_valid:
+    adapter_profile: competition_platform_stage
+    preferred_strategies:
+      - baseline_pid
+      - greedy_intercept
+      - energy_aware
+    fixed_params:
+      challenge_scenario_number: 0
+      launch_wait_time: 0.0
+      launch_inclination_deg: 89.0
+    notes:
+      - Start on the fast surrogate until launch behavior becomes consistently valid.
+  ascent_stable:
+    adapter_profile: competition_platform_stage
+    preferred_strategies:
+      - energy_aware
+      - score_based
+      - baseline_pid
+    fixed_params:
+      challenge_scenario_number: 0
+      launch_wait_time: 0.0
+      launch_inclination_deg: 88.8
+  energy_margin:
+    adapter_profile: competition_platform_stage
+    preferred_strategies:
+      - energy_aware
+      - predictive_intercept
+      - score_based
+    fixed_params:
+      challenge_scenario_number: 0
+      launch_wait_time: 0.0
+      launch_inclination_deg: 88.0
+  approach_window:
+    adapter_profile: balloon_challenge_s0
+    preferred_strategies:
+      - predictive_intercept
+      - score_based
+      - mpc_light
+      - energy_aware
+    fixed_params:
+      challenge_scenario_number: 0
+  balloon_pop:
+    adapter_profile: balloon_challenge_s1
+    preferred_strategies:
+      - energy_aware
+      - mpc_light
+      - cem_planner
+      - predictive_intercept
+    fixed_params:
+      challenge_scenario_number: 1
+
+population_size: 6
+elite_count: 2
+mutation_rate: 0.4
+crossover_rate: 0.3
+seeds_per_experiment: 2
+parallel_workers: auto
+continuous: true
+generations: 5
+base_seed: 9000
+
+global_parameter_space:
+  lookahead_time:
+    type: float
+    min: 0.8
+    max: 2.0
+  kp:
+    type: float
+    min: 0.4
+    max: 2.5
+  kd:
+    type: float
+    min: 0.05
+    max: 0.9
+  throttle:
+    type: float
+    min: 0.55
+    max: 1.0
+  max_tvc:
+    type: float
+    min: 5.0
+    max: 15.0
+  target_distance_weight:
+    type: float
+    min: 0.2
+    max: 1.8
+  target_angle_weight:
+    type: float
+    min: 0.2
+    max: 1.8
+  launch_wait_time:
+    type: float
+    min: 0.0
+    max: 1.5
+  launch_inclination_deg:
+    type: float
+    min: 80.0
+    max: 90.0
+  launch_heading_deg:
+    type: float
+    min: -20.0
+    max: 20.0
+  target_lock_duration:
+    type: float
+    min: 0.1
+    max: 1.5
+  switching_penalty:
+    type: float
+    min: 0.0
+    max: 2.0
+  guidance_mode:
+    choices:
+      - fixed
+      - predictive
+      - short_horizon
+      - cem
+  estimator_mode:
+    choices:
+      - simple
+      - alpha_beta
+      - wind_aware
+  controller_mode:
+    choices:
+      - pursuit
+      - adaptive

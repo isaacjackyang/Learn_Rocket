@@ -1,0 +1,18 @@
+adapter: competition_platform
+strategy_name: rl_policy_wrapper
+params:
+  estimator_mode: alpha_beta
+  target_selector: score_based
+  controller_mode: adaptive
+  policy_path: results/models/bc_policy_best.json
+  max_tvc: 5.0
+  launch_wait_time: 0.18
+  stabilize_duration: 0.8
+  failsafe_tilt_rate: 1.5
+  switching_penalty: 1.25
+  target_switch_margin: 0.35
+  target_switch_cooldown_steps: 4
+  target_lock_duration: 5
+  ascent_turn_scale: 0.22
+  ascent_throttle_floor: 0.9
+  minimum_intercept_altitude_m: 260.0

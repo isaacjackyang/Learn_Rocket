@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rocket-auto-research"
+version = "0.1.0"
+description = "Auto Research scaffold for a rocket GNC competition."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["rocket_auto_research*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

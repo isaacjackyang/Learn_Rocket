@@ -1,0 +1,28 @@
+adapter: activerocketpy
+vendor_repo: vendor/ActiveRocketPy
+terminate_on_apogee: true
+strategy_name: energy_aware
+params:
+  kp: 0.72
+  kd: 0.18
+  throttle: 0.74
+  max_tvc: 2.8
+  launch_wait_time: 0.08
+  stabilize_duration: 0.65
+  target_distance_weight: 0.42
+  target_angle_weight: 0.52
+  target_closure_weight: 0.72
+  target_energy_weight: 0.95
+  target_time_weight: 0.38
+  target_crosswind_weight: 0.12
+  target_lock_duration: 6
+  switching_penalty: 1.15
+  wind_comp_gain: 0.22
+  intercept_lead_scale: 1.08
+  climb_bias_altitude_m: 950.0
+  climb_vertical_gain: 0.72
+  climb_velocity_floor_mps: 46.0
+  desired_speed_floor: 1.2
+  ascent_turn_scale: 0.26
+  ascent_throttle_floor: 0.9
+  minimum_intercept_altitude_m: 220.0

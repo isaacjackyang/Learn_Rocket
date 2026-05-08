@@ -1,0 +1,188 @@
+adapter: balloon_challenge
+challenge_repo_root: .external/BalloonPoppingChallenge
+challenge_scenario_number: 1
+fixed_params:
+  challenge_repo_root: .external/BalloonPoppingChallenge
+  challenge_scenario_number: 1
+  challenge_reward_mode: popped_count
+strategies:
+  - baseline_pid
+  - greedy_intercept
+  - predictive_intercept
+  - score_based
+  - mpc_light
+  - cem_planner
+  - energy_aware
+population_size: 10
+elite_count: 3
+mutation_rate: 0.45
+crossover_rate: 0.45
+seeds_per_experiment: 3
+generations: 5
+base_seed: 100
+parameter_space:
+  kp:
+    min: 0.05
+    max: 1.6
+    sigma: 0.18
+  kd:
+    min: 0.0
+    max: 0.45
+    sigma: 0.06
+  lookahead_time:
+    min: 0.1
+    max: 1.8
+    sigma: 0.2
+  max_tvc:
+    min: 5.0
+    max: 15.0
+    sigma: 0.8
+  throttle:
+    min: 0.25
+    max: 1.0
+    sigma: 0.08
+  target_distance_weight:
+    min: 0.1
+    max: 1.8
+    sigma: 0.15
+  target_angle_weight:
+    min: 0.1
+    max: 1.8
+    sigma: 0.15
+  target_height_weight:
+    min: 0.0
+    max: 1.2
+    sigma: 0.1
+  target_closure_weight:
+    min: 0.0
+    max: 1.2
+    sigma: 0.1
+  target_energy_weight:
+    min: 0.1
+    max: 1.5
+    sigma: 0.12
+  target_time_weight:
+    min: 0.05
+    max: 1.0
+    sigma: 0.08
+  target_crosswind_weight:
+    min: 0.0
+    max: 0.5
+    sigma: 0.05
+  launch_wait_time:
+    min: 0.0
+    max: 1.0
+    sigma: 0.08
+  launch_inclination_deg:
+    min: 45.0
+    max: 90.0
+    sigma: 3.0
+  launch_heading_deg:
+    min: 0.0
+    max: 360.0
+    sigma: 15.0
+  stabilize_duration:
+    min: 0.2
+    max: 2.0
+    sigma: 0.15
+  switching_penalty:
+    min: 0.0
+    max: 1.5
+    sigma: 0.12
+  target_switch_margin:
+    min: 0.0
+    max: 1.5
+    sigma: 0.1
+  target_switch_cooldown_steps:
+    min: 0
+    max: 12
+    sigma: 2.0
+    type: int
+  target_lock_duration:
+    min: 0.0
+    max: 1.5
+    sigma: 0.12
+  failsafe_tilt_rate:
+    min: 1.0
+    max: 8.0
+    sigma: 0.5
+  wind_comp_gain:
+    min: 0.0
+    max: 1.0
+    sigma: 0.08
+  desired_speed:
+    min: 0.6
+    max: 2.0
+    sigma: 0.12
+  desired_speed_floor:
+    min: 0.8
+    max: 1.8
+    sigma: 0.08
+  intercept_lead_scale:
+    min: 0.6
+    max: 1.6
+    sigma: 0.08
+  climb_bias_altitude_m:
+    min: 100.0
+    max: 1600.0
+    sigma: 80.0
+  climb_vertical_gain:
+    min: 0.1
+    max: 0.95
+    sigma: 0.08
+  climb_velocity_floor_mps:
+    min: 15.0
+    max: 75.0
+    sigma: 4.5
+  ascent_turn_scale:
+    min: 0.1
+    max: 0.8
+    sigma: 0.06
+  ascent_throttle_floor:
+    min: 0.55
+    max: 1.0
+    sigma: 0.05
+  minimum_intercept_altitude_m:
+    min: 20.0
+    max: 500.0
+    sigma: 25.0
+  branch_count:
+    min: 3
+    max: 12
+    sigma: 2.0
+    type: int
+  horizon_s:
+    min: 0.5
+    max: 2.2
+    sigma: 0.18
+  balloon_radius_m:
+    min: 1.0
+    max: 2.5
+    sigma: 0.12
+  release_interval_s:
+    min: 0.25
+    max: 1.5
+    sigma: 0.08
+  estimator_mode:
+    choices:
+      - simple
+      - alpha_beta
+      - wind_aware
+      - jitter_aware
+  target_selector:
+    choices:
+      - nearest
+      - score_based
+      - reachable
+      - energy_aware
+  guidance_mode:
+    choices:
+      - fixed
+      - predictive
+      - short_horizon
+      - cem
+      - energy_aware
+  controller_mode:
+    choices:
+      - pursuit
+      - adaptive

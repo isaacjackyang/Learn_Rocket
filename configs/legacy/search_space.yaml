@@ -1,0 +1,48 @@
+strategies:
+  - baseline_pid
+  - greedy_intercept
+  - predictive_intercept
+population_size: 9
+elite_count: 3
+mutation_rate: 0.45
+crossover_rate: 0.4
+seeds_per_experiment: 5
+generations: 4
+base_seed: 0
+parameter_space:
+  kp:
+    min: 0.8
+    max: 1.8
+    sigma: 0.15
+  kd:
+    min: 0.05
+    max: 0.3
+    sigma: 0.05
+  lookahead_time:
+    min: 0.4
+    max: 1.6
+    sigma: 0.18
+  throttle:
+    min: 0.7
+    max: 0.98
+    sigma: 0.04
+  max_tvc:
+    min: 0.4
+    max: 0.95
+    sigma: 0.08
+  target_distance_weight:
+    min: 0.5
+    max: 1.5
+    sigma: 0.15
+  target_angle_weight:
+    min: 0.3
+    max: 1.2
+    sigma: 0.12
+  switching_penalty:
+    min: 0.1
+    max: 1.2
+    sigma: 0.1
+  launch_wait_time:
+    min: 0.0
+    max: 0.5
+    sigma: 0.08

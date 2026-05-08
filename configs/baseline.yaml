@@ -1,0 +1,9 @@
+strategy_name: baseline_pid
+params:
+  kp: 1.15
+  kd: 0.12
+  lookahead_time: 0.85
+  throttle: 0.84
+  max_tvc: 0.6
+  launch_wait_time: 0.0
+  desired_speed: 1.0

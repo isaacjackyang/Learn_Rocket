@@ -1,0 +1,12 @@
+strategy_name: predictive_intercept
+params:
+  kp: 1.28
+  kd: 0.16
+  throttle: 0.88
+  max_tvc: 0.72
+  launch_wait_time: 0.0
+  target_distance_weight: 1.0
+  target_angle_weight: 0.85
+  switching_penalty: 0.85
+  min_intercept_time: 0.35
+  max_intercept_time: 2.7

@@ -1,0 +1,2 @@
+"""Shared GNC primitives."""
+
