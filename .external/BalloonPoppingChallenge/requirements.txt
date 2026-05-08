@@ -1,2 +1,0 @@
-./ActiveRocketPy[all]
--e .

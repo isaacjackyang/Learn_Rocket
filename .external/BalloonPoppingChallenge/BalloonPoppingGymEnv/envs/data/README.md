@@ -1,1 +1,0 @@
-This folder contains data files used by the ActiveRocketPy environment.

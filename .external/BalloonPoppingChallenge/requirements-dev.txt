@@ -1,2 +1,0 @@
--e ./ActiveRocketPy[all]
--e ".[dev]"
