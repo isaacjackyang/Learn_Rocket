@@ -5,6 +5,12 @@ import sys
 import time
 from pathlib import Path
 
+from rocket_auto_research.auto_research.external_paths import (
+    DEFAULT_CHALLENGE_ACTIVEROCKETPY,
+    DEFAULT_CHALLENGE_REPO,
+    balloon_challenge_setup_hint,
+    resolve_first_existing_path,
+)
 from rocket_auto_research.auto_research.balloon_challenge_loader import (
     BalloonChallengeScenario,
     load_balloon_challenge_scenario,
@@ -30,11 +36,13 @@ def _status_scalar(raw_value: object) -> int:
 
 
 def _import_balloon_challenge(repo_root: str | Path):
-    root = Path(repo_root).resolve()
+    root = resolve_first_existing_path(repo_root, DEFAULT_CHALLENGE_REPO)
+    if root is None:
+        raise FileNotFoundError(balloon_challenge_setup_hint())
     package_root = root
-    activerocketpy_root = root / "ActiveRocketPy"
+    activerocketpy_root = resolve_first_existing_path(root / "ActiveRocketPy", DEFAULT_CHALLENGE_ACTIVEROCKETPY)
     for candidate in (package_root, activerocketpy_root):
-        if candidate.exists() and str(candidate) not in sys.path:
+        if candidate is not None and candidate.exists() and str(candidate) not in sys.path:
             sys.path.insert(0, str(candidate))
     from BalloonPoppingGymEnv.envs.balloon_world import BalloonPoppingEnv  # type: ignore
 
@@ -57,7 +65,7 @@ def _clear_balloon_cache(repo_root: str | Path) -> None:
 
 
 class BalloonChallengeSimulationAdapter(SimulationAdapter):
-    def __init__(self, repo_root: str | Path = ".external/BalloonPoppingChallenge", scenario_number: int = 1) -> None:
+    def __init__(self, repo_root: str | Path = str(DEFAULT_CHALLENGE_REPO), scenario_number: int = 1) -> None:
         self.repo_root = Path(repo_root)
         self.scenario_number = scenario_number
 
@@ -70,7 +78,10 @@ class BalloonChallengeSimulationAdapter(SimulationAdapter):
             scenario_path=spec.params.get("challenge_scenario_path"),
         )
         if scenario is None:
-            raise FileNotFoundError(f"Balloon challenge scenario not found for repo={repo_root} scenario={scenario_number}")
+            raise FileNotFoundError(
+                f"Balloon challenge scenario not found for repo={repo_root} scenario={scenario_number}. "
+                f"{balloon_challenge_setup_hint()}"
+            )
         BalloonPoppingEnv = _import_balloon_challenge(repo_root)
         _clear_balloon_cache(repo_root)
         env = BalloonPoppingEnv(render_mode=None, parameters=scenario.raw)

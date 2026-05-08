@@ -6,8 +6,9 @@ from typing import Any
 
 import yaml
 
+from rocket_auto_research.auto_research.external_paths import DEFAULT_CHALLENGE_REPO
 
-DEFAULT_REPO = Path(".external/BalloonPoppingChallenge")
+DEFAULT_REPO = DEFAULT_CHALLENGE_REPO
 
 
 @dataclass(slots=True)

@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -16,6 +17,8 @@ class BalloonChallengeAdapterTests(unittest.TestCase):
         self.assertEqual(BalloonChallengeSimulationAdapter._popped_count(observation), 2)
 
     def test_run_episode_smoke_on_real_env(self) -> None:
+        if not Path(".external/BalloonPoppingChallenge").exists():
+            raise unittest.SkipTest("External BalloonPoppingChallenge dependency is not installed.")
         spec = ExperimentSpec(
             strategy_name="greedy_intercept",
             params={
@@ -41,4 +44,3 @@ class BalloonChallengeAdapterTests(unittest.TestCase):
         self.assertEqual(result.metadata["score_is_proxy"], False)
         self.assertGreaterEqual(result.metadata["balloons_total"], 1)
         self.assertGreater(len(result.metadata["trajectory"]), 0)
-

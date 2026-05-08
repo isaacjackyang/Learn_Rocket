@@ -8,6 +8,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rocket_auto_research.auto_research.external_paths import (
+    DEFAULT_CHALLENGE_ACTIVEROCKETPY,
+    DEFAULT_VENDOR_ACTIVEROCKETPY,
+    activerocketpy_setup_hint,
+    resolve_first_existing_path,
+)
 from rocket_auto_research.auto_research.experiment_spec import ExperimentSpec
 from rocket_auto_research.auto_research.simulation import EpisodeResult, SimulationAdapter
 from rocket_auto_research.gnc.state import BalloonState, ControlAction, RocketState, Vector3, WorldState
@@ -15,10 +21,15 @@ from rocket_auto_research.strategies.registry import build_strategy
 
 
 def _import_rocketpy(vendor_repo: str | Path | None = None):
-    if vendor_repo is not None:
-        repo_path = Path(vendor_repo).resolve()
-        if repo_path.exists() and str(repo_path) not in sys.path:
-            sys.path.insert(0, str(repo_path))
+    repo_path = resolve_first_existing_path(
+        vendor_repo,
+        DEFAULT_VENDOR_ACTIVEROCKETPY,
+        DEFAULT_CHALLENGE_ACTIVEROCKETPY,
+    )
+    if repo_path is None:
+        raise FileNotFoundError(activerocketpy_setup_hint())
+    if str(repo_path) not in sys.path:
+        sys.path.insert(0, str(repo_path))
     import rocketpy  # type: ignore
 
     return rocketpy
@@ -187,7 +198,7 @@ class StrategyLoopState:
 
 @dataclass(slots=True)
 class ActiveRocketPySimulationAdapter(SimulationAdapter):
-    vendor_repo: str | Path = "vendor/ActiveRocketPy"
+    vendor_repo: str | Path = str(DEFAULT_VENDOR_ACTIVEROCKETPY)
     terminate_on_apogee: bool = True
 
     def run_episode(self, spec: ExperimentSpec, seed: int) -> EpisodeResult:

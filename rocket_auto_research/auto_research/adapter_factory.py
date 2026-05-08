@@ -6,6 +6,10 @@ from typing import Any
 from rocket_auto_research.auto_research.activerocketpy_adapter import ActiveRocketPySimulationAdapter
 from rocket_auto_research.auto_research.balloon_challenge_adapter import BalloonChallengeSimulationAdapter
 from rocket_auto_research.auto_research.competition_platform_adapter import CompetitionPlatformSimulationAdapter
+from rocket_auto_research.auto_research.external_paths import (
+    DEFAULT_CHALLENGE_REPO,
+    DEFAULT_VENDOR_ACTIVEROCKETPY,
+)
 from rocket_auto_research.auto_research.simulation import MockRocketSimAdapter, SimulationAdapter
 
 
@@ -38,14 +42,14 @@ def _build_named_adapter(config: dict[str, Any]) -> SimulationAdapter:
         return MockRocketSimAdapter()
     if adapter_name == "activerocketpy":
         return ActiveRocketPySimulationAdapter(
-            vendor_repo=config.get("vendor_repo", Path("vendor/ActiveRocketPy")),
+            vendor_repo=config.get("vendor_repo", DEFAULT_VENDOR_ACTIVEROCKETPY),
             terminate_on_apogee=bool(config.get("terminate_on_apogee", True)),
         )
     if adapter_name == "competition_platform":
         return CompetitionPlatformSimulationAdapter()
     if adapter_name == "balloon_challenge":
         return BalloonChallengeSimulationAdapter(
-            repo_root=config.get("challenge_repo_root", Path(".external/BalloonPoppingChallenge")),
+            repo_root=config.get("challenge_repo_root", DEFAULT_CHALLENGE_REPO),
             scenario_number=int(config.get("challenge_scenario_number", 1)),
         )
     raise ValueError(f"Unsupported adapter '{adapter_name}'.")

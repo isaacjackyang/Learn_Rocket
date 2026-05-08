@@ -1,10 +1,13 @@
 import unittest
+from pathlib import Path
 
 from rocket_auto_research.auto_research.balloon_challenge_loader import load_balloon_challenge_scenario
 
 
 class BalloonChallengeLoaderTests(unittest.TestCase):
     def test_load_scenario_one_defaults(self) -> None:
+        if not Path(".external/BalloonPoppingChallenge").exists():
+            raise unittest.SkipTest("External BalloonPoppingChallenge dependency is not installed.")
         scenario = load_balloon_challenge_scenario(
             repo_root=".external/BalloonPoppingChallenge",
             scenario_number=1,
