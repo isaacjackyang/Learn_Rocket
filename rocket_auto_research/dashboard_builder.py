@@ -58,6 +58,10 @@ INDEX_HTML = """<!DOCTYPE html>
           <span class="bilingual"><span class="zh">工作執行數</span><span class="en">Workers</span></span>
           <select id="worker-count"></select>
         </label>
+        <label>
+          <span class="bilingual"><span class="zh">每代實驗數</span><span class="en">Population size</span></span>
+          <select id="population-size"></select>
+        </label>
         <button id="research-start" type="button"><span class="zh">開始</span><span class="en">Start</span></button>
         <button id="research-pause" type="button" class="secondary"><span class="zh">暫停</span><span class="en">Pause</span></button>
         <button id="research-stop" type="button"><span class="zh">停止</span><span class="en">Stop</span></button>
@@ -103,6 +107,37 @@ No research log yet.</pre>
       <div id="generation-chart" class="chart"></div>
     </section>
 
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="section-kicker bilingual"><span class="zh">實驗演進</span><span class="en">Experiment Evolution</span></p>
+          <h2 class="bilingual"><span class="zh">自動研究進展</span><span class="en">Auto Research Progress</span></h2>
+        </div>
+      </div>
+      <div id="progress-summary" class="pill trend-pill">載入研究進展中 / Loading research progress</div>
+      <div class="control-row">
+        <label>
+          <span class="bilingual"><span class="zh">憿舐內撖阡?</span><span class="en">Experiment window</span></span>
+          <select id="progress-window">
+            <option value="all">?券 / All</option>
+            <option value="20">?餈?20 ??/ Last 20</option>
+            <option value="50">?餈?50 ??/ Last 50</option>
+            <option value="100">?餈?100 ??/ Last 100</option>
+            <option value="250">?餈?250 ??/ Last 250</option>
+            <option value="500">?餈?500 ??/ Last 500</option>
+          </select>
+        </label>
+        <label>
+          <span class="bilingual"><span class="zh">Y ?憿舐內</span><span class="en">Y-axis metric</span></span>
+          <select id="progress-metric">
+            <option value="final_fitness">Final fitness</option>
+            <option value="mean_popped">Mean popped</option>
+          </select>
+        </label>
+      </div>
+      <div id="progress-chart" class="chart"></div>
+    </section>
+
     <section class="layout-grid">
       <div class="panel left-column">
         <div class="panel-heading">
@@ -130,6 +165,8 @@ No research log yet.</pre>
             <thead>
               <tr>
                 <th>實驗<br>Experiment</th>
+                <th>時間<br>Time</th>
+                <th>耗時<br>Duration</th>
                 <th>策略<br>Strategy</th>
                 <th>介面<br>Adapter</th>
                 <th>適應度<br>Fitness</th>
@@ -926,6 +963,8 @@ APP_JS = """(() => {
     availableConfigs: [],
     generationWindow: "all",
     generationScale: "linear",
+    progressWindow: "all",
+    progressMetric: "final_fitness",
     failureSource: "current_experiment",
   };
 
@@ -937,10 +976,14 @@ APP_JS = """(() => {
     generationWindow: document.getElementById("generation-window"),
     generationScale: document.getElementById("generation-scale"),
     generationStats: document.getElementById("generation-stats"),
+    progressSummary: document.getElementById("progress-summary"),
+    progressWindow: document.getElementById("progress-window"),
+    progressMetric: document.getElementById("progress-metric"),
     researchStatusPill: document.getElementById("research-status-pill"),
     researchStatusText: document.getElementById("research-status-text"),
     researchConfig: document.getElementById("research-config"),
     workerCount: document.getElementById("worker-count"),
+    populationSize: document.getElementById("population-size"),
     researchConfigHelp: document.getElementById("research-config-help"),
     researchStart: document.getElementById("research-start"),
     researchPause: document.getElementById("research-pause"),
@@ -971,6 +1014,34 @@ APP_JS = """(() => {
       return "n/a";
     }
     return Number(value).toFixed(digits);
+  }
+
+  function formatTimestamp(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return "n/a";
+    }
+    const date = new Date(numeric * 1000);
+    if (Number.isNaN(date.getTime())) {
+      return "n/a";
+    }
+    return date.toLocaleString("zh-TW", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  }
+
+  function formatDurationSeconds(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) {
+      return "n/a";
+    }
+    return `${numeric.toFixed(2)}s`;
   }
 
   function escapeHtml(value) {
@@ -1021,18 +1092,34 @@ APP_JS = """(() => {
       .join(" ");
   }
 
-  function populateWorkerOptions(selectedValue) {
+  function populateWorkerOptions(selectedValue, preserveCurrent = false) {
     if (!els.workerCount) {
       return;
     }
-    const current = Number(selectedValue);
-    const desired = Number.isFinite(current) && current >= 1 ? Math.min(32, Math.max(1, current)) : 1;
+    const current = preserveCurrent ? Number(els.workerCount.value) : Number(selectedValue);
+    const fallback = Number(selectedValue);
+    const desiredSource = Number.isFinite(current) && current >= 1 ? current : fallback;
+    const desired = Number.isFinite(desiredSource) && desiredSource >= 1 ? Math.min(32, Math.max(1, desiredSource)) : 1;
     const options = [];
     for (let index = 1; index <= 32; index += 1) {
       options.push(`<option value="${index}">${index}</option>`);
     }
     els.workerCount.innerHTML = options.join("");
     els.workerCount.value = String(desired);
+  }
+
+  function populatePopulationOptions(selectedValue, preserveCurrent = false) {
+    if (!els.populationSize) {
+      return;
+    }
+    const allowed = [4, 6, 8, 10, 12, 16, 20, 24, 32, 48, 64];
+    const current = preserveCurrent ? Number(els.populationSize.value) : Number(selectedValue);
+    const fallback = Number(selectedValue);
+    const desiredSource = Number.isFinite(current) && current >= 1 ? current : fallback;
+    const desired = Number.isFinite(desiredSource) && desiredSource >= 1 ? desiredSource : 6;
+    const values = allowed.includes(desired) ? allowed : [...allowed, desired].sort((a, b) => a - b);
+    els.populationSize.innerHTML = values.map((value) => `<option value="${value}">${value}</option>`).join("");
+    els.populationSize.value = String(desired);
   }
 
   function statusCard(labelZh, labelEn, value, secondary = "") {
@@ -1362,7 +1449,10 @@ APP_JS = """(() => {
     const configuredWorkers = Number(status?.configured_workers);
     const activeWorkers = Number(status?.active_workers);
     const workerMode = String(status?.worker_mode || "serial");
-    populateWorkerOptions(configuredWorkers);
+    const syncWorkersFromStatus = !!status?.running || ["starting", "running", "paused", "pausing", "stopping"].includes(phase);
+    populateWorkerOptions(configuredWorkers, !syncWorkersFromStatus);
+    const configuredPopulationSize = Number(status?.population_size);
+    populatePopulationOptions(configuredPopulationSize, !syncWorkersFromStatus);
     const workerLabel = Number.isFinite(activeWorkers) ? `${activeWorkers}` : "n/a";
     const availableWorkerMax = Number(status?.worker_limits?.max);
     const workerDetail = Number.isFinite(configuredWorkers)
@@ -1524,11 +1614,153 @@ APP_JS = """(() => {
     }, { displayModeBar: false, responsive: true });
   }
 
+  function renderResearchProgressChart() {
+    const progress = Array.isArray(data.research_progress) ? data.research_progress : [];
+    if (!progress.length) {
+      els.progressSummary.innerHTML = dualLine("尚無研究進展資料", "No research progress data yet");
+      Plotly.newPlot("progress-chart", [], {
+        margin: { l: 48, r: 12, t: 12, b: 48 },
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: themeColor("--plot-bg", "rgba(255,255,255,0.55)"),
+      }, { displayModeBar: false, responsive: true });
+      return;
+    }
+    const kept = progress.filter((entry) => entry.kept);
+    const discarded = progress.filter((entry) => !entry.kept);
+    const best = progress.map((entry) => entry.running_best);
+    els.progressSummary.innerHTML = dualLine(
+      `共 ${progress.length} 次實驗，保留 ${kept.length} 次有效提升`,
+      `${progress.length} experiments, ${kept.length} kept improvements`
+    );
+    const traces = [
+      {
+        x: discarded.map((entry) => entry.index),
+        y: discarded.map((entry) => entry.final_fitness),
+        text: discarded.map((entry) => `${entry.strategy_name} (${entry.experiment_id})`),
+        type: "scatter",
+        mode: "markers",
+        name: "Discarded",
+        marker: { color: "rgba(140,140,140,0.45)", size: 8 },
+      },
+      {
+        x: kept.map((entry) => entry.index),
+        y: kept.map((entry) => entry.final_fitness),
+        text: kept.map((entry) => entry.annotation || `${entry.strategy_name} (${entry.experiment_id})`),
+        type: "scatter",
+        mode: "markers+text",
+        name: "Kept",
+        textposition: "top right",
+        textfont: { color: themeColor("--accent", "#1d6b69"), size: 12 },
+        marker: { color: "#2fbf71", size: 11, line: { color: "#0d5d35", width: 1.5 } },
+      },
+      {
+        x: progress.map((entry) => entry.index),
+        y: best,
+        text: progress.map((entry) => entry.annotation || ""),
+        type: "scatter",
+        mode: "lines",
+        name: "Running best",
+        line: { color: "#5dc98f", width: 4, shape: "hv" },
+      },
+    ];
+    Plotly.newPlot("progress-chart", traces, {
+      margin: { l: 56, r: 12, t: 12, b: 48 },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: themeColor("--plot-bg", "rgba(255,255,255,0.55)"),
+      xaxis: { title: "Experiment #" },
+      yaxis: { title: "Final fitness (higher is better)" },
+      legend: { orientation: "h", x: 1, xanchor: "right", y: 1.12 },
+    }, { displayModeBar: false, responsive: true });
+  }
+
   function refreshThemeSensitiveViews() {
     renderGenerationChart();
+    renderResearchProgressChart();
     if (state.selectedRunId) {
       renderSelectedReplay();
     }
+  }
+
+  function renderResearchProgressChart() {
+    const progress = Array.isArray(data.research_progress) ? data.research_progress : [];
+    if (!progress.length) {
+      els.progressSummary.innerHTML = dualLine("撠?弦?脣?鞈?", "No research progress data yet");
+      Plotly.newPlot("progress-chart", [], {
+        margin: { l: 48, r: 12, t: 12, b: 48 },
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: themeColor("--plot-bg", "rgba(255,255,255,0.55)"),
+      }, { displayModeBar: false, responsive: true });
+      return;
+    }
+    const maxExperiments = state.progressWindow === "all" ? null : Number(state.progressWindow);
+    const visibleProgress = Number.isFinite(maxExperiments) && maxExperiments > 0 ? progress.slice(-maxExperiments) : progress;
+    const metricConfig = state.progressMetric === "mean_popped"
+      ? {
+          key: "mean_popped",
+          keptKey: "kept_popped",
+          runningBestKey: "running_best_popped",
+          annotationKey: "annotation_popped",
+          summaryLabelZh: "平均打到數",
+          summaryLabelEn: "mean popped",
+          axisTitle: "Mean popped (higher is better)",
+        }
+      : {
+          key: "final_fitness",
+          keptKey: "kept_fitness",
+          runningBestKey: "running_best_fitness",
+          annotationKey: "annotation_fitness",
+          summaryLabelZh: "最終 fitness",
+          summaryLabelEn: "final fitness",
+          axisTitle: "Final fitness (higher is better)",
+        };
+    const kept = visibleProgress.filter((entry) => entry[metricConfig.keptKey]);
+    const discarded = visibleProgress.filter((entry) => !entry[metricConfig.keptKey]);
+    const best = visibleProgress.map((entry) => entry[metricConfig.runningBestKey]);
+    const windowLabelZh = state.progressWindow === "all" ? "全部" : `最近 ${state.progressWindow} 次`;
+    const windowLabelEn = state.progressWindow === "all" ? "all experiments" : `last ${state.progressWindow}`;
+    els.progressSummary.innerHTML = dualLine(
+      `${windowLabelZh} / 顯示 ${visibleProgress.length} 次，保留 ${kept.length} 次以 ${metricConfig.summaryLabelZh} 計算的提升`,
+      `Showing ${windowLabelEn}: ${visibleProgress.length} experiments, ${kept.length} kept improvements by ${metricConfig.summaryLabelEn}`
+    );
+    const traces = [
+      {
+        x: discarded.map((entry) => entry.index),
+        y: discarded.map((entry) => entry[metricConfig.key]),
+        text: discarded.map((entry) => `${entry.strategy_name} (${entry.experiment_id})`),
+        type: "scatter",
+        mode: "markers",
+        name: "Discarded",
+        marker: { color: "rgba(140,140,140,0.45)", size: 8 },
+      },
+      {
+        x: kept.map((entry) => entry.index),
+        y: kept.map((entry) => entry[metricConfig.key]),
+        text: kept.map((entry) => entry[metricConfig.annotationKey] || `${entry.strategy_name} (${entry.experiment_id})`),
+        type: "scatter",
+        mode: "markers+text",
+        name: "Kept",
+        textposition: "top right",
+        textfont: { color: themeColor("--accent", "#1d6b69"), size: 12 },
+        marker: { color: "#2fbf71", size: 11, line: { color: "#0d5d35", width: 1.5 } },
+      },
+      {
+        x: visibleProgress.map((entry) => entry.index),
+        y: best,
+        text: visibleProgress.map((entry) => entry[metricConfig.annotationKey] || ""),
+        type: "scatter",
+        mode: "lines",
+        name: "Running best",
+        line: { color: "#5dc98f", width: 4, shape: "hv" },
+      },
+    ];
+    Plotly.newPlot("progress-chart", traces, {
+      margin: { l: 56, r: 12, t: 12, b: 48 },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: themeColor("--plot-bg", "rgba(255,255,255,0.55)"),
+      xaxis: { title: "Experiment #" },
+      yaxis: { title: metricConfig.axisTitle },
+      legend: { orientation: "h", x: 1, xanchor: "right", y: 1.12 },
+    }, { displayModeBar: false, responsive: true });
   }
 
   function populateFilters() {
@@ -1581,6 +1813,8 @@ APP_JS = """(() => {
       row.dataset.experimentId = run.experiment_id;
       row.innerHTML = `
         <td>${run.experiment_id}</td>
+        <td>${formatTimestamp(run.completed_at)}</td>
+        <td>${formatDurationSeconds(run.summary.mean_duration)}</td>
         <td>${run.strategy_name}</td>
         <td>${run.adapter || "unknown"}</td>
         <td>${fmt(run.summary.final_fitness, 1)}</td>
@@ -1590,7 +1824,7 @@ APP_JS = """(() => {
       els.runTableBody.appendChild(row);
       makeOption(
         els.runSelect,
-        `${run.experiment_id} | ${run.strategy_name} | fitness ${fmt(run.summary.final_fitness, 1)}`,
+        `${run.experiment_id} | ${formatTimestamp(run.completed_at)} | ${formatDurationSeconds(run.summary.mean_duration)} | ${run.strategy_name} | fitness ${fmt(run.summary.final_fitness, 1)}`,
         run.experiment_id,
       );
     });
@@ -1641,6 +1875,8 @@ APP_JS = """(() => {
     }
     const detailCards = [
       ["Strategy", "Strategy", run.strategy_name],
+      ["完成時間", "Completed", formatTimestamp(run.completed_at)],
+      ["耗時", "Duration", formatDurationSeconds(run.summary.mean_duration)],
       ["Adapter", "Adapter", run.adapter || "unknown"],
       ["Generation", "Generation", run.generation ?? "n/a"],
       ["Fitness", "Fitness", fmt(run.summary.final_fitness, 1)],
@@ -2022,6 +2258,14 @@ APP_JS = """(() => {
       state.generationScale = event.target.value === "log" ? "log" : "linear";
       renderGenerationChart();
     });
+    els.progressWindow.addEventListener("change", (event) => {
+      state.progressWindow = event.target.value || "all";
+      renderResearchProgressChart();
+    });
+    els.progressMetric.addEventListener("change", (event) => {
+      state.progressMetric = event.target.value === "mean_popped" ? "mean_popped" : "final_fitness";
+      renderResearchProgressChart();
+    });
     els.researchConfig.addEventListener("change", () => {
       renderSelectedConfigHelp();
     });
@@ -2030,6 +2274,7 @@ APP_JS = """(() => {
         const payload = await apiPost("/api/start", {
           config: els.researchConfig.value,
           parallel_workers: Number(els.workerCount?.value || 1),
+          population_size: Number(els.populationSize?.value || 6),
         });
         renderResearchStatus(payload);
       } catch (error) {
@@ -2086,10 +2331,14 @@ APP_JS = """(() => {
   function init() {
     applyTheme(window.localStorage.getItem("rocket-dashboard-theme") || "day");
     populateWorkerOptions(1);
+    populatePopulationOptions(6);
     els.generationWindow.value = state.generationWindow;
     els.generationScale.value = state.generationScale;
+    els.progressWindow.value = state.progressWindow;
+    els.progressMetric.value = state.progressMetric;
     renderSummary();
     renderGenerationChart();
+    renderResearchProgressChart();
     populateFilters();
     renderReports();
     bindEvents();
@@ -2210,6 +2459,7 @@ def _scan_runs(results_dir: Path, dashboard_dir: Path) -> tuple[list[dict[str, A
                 "experiment_id": spec["experiment_id"],
                 "strategy_name": spec["strategy_name"],
                 "generation": spec.get("generation"),
+                "completed_at": summary_path.stat().st_mtime,
                 "note": spec.get("note"),
                 "parent_ids": spec.get("parent_ids", []),
                 "params": spec.get("params", {}),
@@ -2222,6 +2472,93 @@ def _scan_runs(results_dir: Path, dashboard_dir: Path) -> tuple[list[dict[str, A
         )
     runs.sort(key=lambda run: float(run["summary"].get("final_fitness", 0.0)), reverse=True)
     return runs, trajectory_count
+
+
+def _format_param_value(value: Any) -> str:
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    return str(value)
+
+
+def _best_change_label(previous_run: dict[str, Any] | None, current_run: dict[str, Any]) -> str:
+    if previous_run is None:
+        return "baseline"
+    if previous_run.get("strategy_name") != current_run.get("strategy_name"):
+        return f"strategy {previous_run.get('strategy_name')} -> {current_run.get('strategy_name')}"
+    previous_params = dict(previous_run.get("params", {}))
+    current_params = dict(current_run.get("params", {}))
+    changed_entries: list[tuple[float, str]] = []
+    for key in sorted(set(previous_params) | set(current_params)):
+        old_value = previous_params.get(key)
+        new_value = current_params.get(key)
+        if old_value == new_value:
+            continue
+        if isinstance(old_value, (int, float)) and isinstance(new_value, (int, float)):
+            scale = max(abs(float(old_value)), abs(float(new_value)), 1.0)
+            score = abs(float(new_value) - float(old_value)) / scale
+        else:
+            score = 1.0
+        changed_entries.append(
+            (
+                score,
+                f"{key} {_format_param_value(old_value)}->{_format_param_value(new_value)}",
+            )
+        )
+    if changed_entries:
+        changed_entries.sort(key=lambda item: item[0], reverse=True)
+        return changed_entries[0][1]
+    note = str(current_run.get("note") or "").strip()
+    return note.split(";")[0] if note else "kept improvement"
+
+
+def _build_research_progress(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ordered_runs = sorted(
+        runs,
+        key=lambda run: (
+            int(run.get("generation")) if run.get("generation") is not None else 10**9,
+            float(run.get("completed_at", 0.0)),
+            str(run.get("experiment_id", "")),
+        ),
+    )
+    progress: list[dict[str, Any]] = []
+    running_best_fitness = float("-inf")
+    running_best_popped = float("-inf")
+    previous_kept_fitness_run: dict[str, Any] | None = None
+    previous_kept_popped_run: dict[str, Any] | None = None
+    for index, run in enumerate(ordered_runs, start=1):
+        final_fitness = float(run.get("summary", {}).get("final_fitness", 0.0))
+        mean_popped = float(run.get("summary", {}).get("mean_popped", 0.0))
+        kept_fitness = final_fitness > running_best_fitness + 1e-9
+        kept_popped = mean_popped > running_best_popped + 1e-9
+        if kept_fitness:
+            running_best_fitness = final_fitness
+            annotation_fitness = _best_change_label(previous_kept_fitness_run, run)
+            previous_kept_fitness_run = run
+        else:
+            annotation_fitness = ""
+        if kept_popped:
+            running_best_popped = mean_popped
+            annotation_popped = _best_change_label(previous_kept_popped_run, run)
+            previous_kept_popped_run = run
+        else:
+            annotation_popped = ""
+        progress.append(
+            {
+                "index": index,
+                "experiment_id": run.get("experiment_id"),
+                "strategy_name": run.get("strategy_name"),
+                "stage_id": run.get("summary", {}).get("stage_id"),
+                "final_fitness": final_fitness,
+                "mean_popped": mean_popped,
+                "kept_fitness": kept_fitness,
+                "kept_popped": kept_popped,
+                "running_best_fitness": running_best_fitness,
+                "running_best_popped": running_best_popped,
+                "annotation_fitness": annotation_fitness,
+                "annotation_popped": annotation_popped,
+            }
+        )
+    return progress
 
 
 def build_dashboard(results_dir: str | Path = "results", output_dir: str | Path | None = None) -> Path:
@@ -2279,6 +2616,7 @@ def build_dashboard(results_dir: str | Path = "results", output_dir: str | Path 
             report_previews.append({"name": path.name, "preview": _preview_markdown(path)})
 
     runs, trajectory_count = _scan_runs(resolved_results, resolved_output)
+    research_progress = _build_research_progress(runs)
     strategy_names = sorted({run["strategy_name"] for run in runs})
     best_run = runs[0] if runs else None
     summary = {
@@ -2303,6 +2641,7 @@ def build_dashboard(results_dir: str | Path = "results", output_dir: str | Path 
         "cross_validations": cross_validations,
         "report_previews": report_previews,
         "runs": runs,
+        "research_progress": research_progress,
     }
     if not dashboard_payload["generated_at"]:
         dashboard_payload["generated_at"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")

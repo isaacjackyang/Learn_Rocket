@@ -21,6 +21,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the auto research loop.")
     parser.add_argument("--config", required=True, help="Path to search-space YAML config.")
     parser.add_argument("--parallel-workers", type=int, default=None, help="Override parallel worker count.")
+    parser.add_argument("--population-size", type=int, default=None, help="Override population size for each generation.")
     parser.add_argument("--control-dir", default=None, help="Optional runtime control directory for dashboard orchestration.")
     args = parser.parse_args()
 
@@ -38,7 +39,9 @@ def main() -> None:
         parameter_space=parameter_space,
         fixed_params=dict(config.get("fixed_params", {})),
         stage_policy=dict(config.get("stage_policy", {})),
-        population_size=int(config["population_size"]),
+        population_size=_parse_population_size(
+            args.population_size if args.population_size is not None else config["population_size"]
+        ),
         elite_count=int(config["elite_count"]),
         mutation_rate=float(config["mutation_rate"]),
         crossover_rate=float(config["crossover_rate"]),
@@ -149,6 +152,14 @@ def _parse_parallel_workers(raw_value: object) -> int:
         return min(32, max(1, int(raw_value)))
     except (TypeError, ValueError):
         return 1
+
+
+def _parse_population_size(raw_value: object) -> int:
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return 6
+    return min(64, max(4, value))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+import time
 from typing import Any
 
 from rocket_auto_research.auto_research.adapter_factory import build_simulation_adapter
@@ -31,19 +32,25 @@ class ExperimentRunner:
         runtime_control: ResearchRuntimeControl | None = None,
         adapter_config: dict[str, Any] | None = None,
         max_workers: int = 1,
+        persist_flush_interval_s: float = 180.0,
     ) -> None:
         self.adapter = adapter
         self.results_dir = Path(results_dir)
         self.runtime_control = runtime_control
         self.adapter_config = dict(adapter_config or {})
         self.max_workers = max(1, int(max_workers))
+        self.persist_flush_interval_s = max(1.0, float(persist_flush_interval_s))
+        self._pending_persist: list[ExperimentResult] = []
+        self._last_persist_flush_monotonic = time.monotonic()
 
-    def run(self, spec: ExperimentSpec, stage: ResearchStage | None = None) -> ExperimentResult:
+    def run(self, spec: ExperimentSpec, stage: ResearchStage | None = None, *, persist: bool = True) -> ExperimentResult:
         episodes = self._run_episodes(spec)
         summary = evaluate_episode_set(episodes, stage=stage)
         failure_report = analyze_failures(episodes, summary)
-        self._persist(spec, episodes, summary, failure_report)
-        return ExperimentResult(spec=spec, episodes=episodes, summary=summary, failure_report=failure_report)
+        result = ExperimentResult(spec=spec, episodes=episodes, summary=summary, failure_report=failure_report)
+        if persist:
+            self._queue_persist(result)
+        return result
 
     def run_population(
         self,
@@ -55,7 +62,8 @@ class ExperimentRunner:
         if worker_count <= 1:
             results: list[ExperimentResult] = []
             for spec in specs:
-                result = self.run(spec, stage=stage)
+                result = self.run(spec, stage=stage, persist=False)
+                self._queue_persist(result)
                 results.append(result)
                 if on_completed is not None:
                     on_completed(spec, result)
@@ -79,10 +87,27 @@ class ExperimentRunner:
                 spec = futures[future]
                 payload = future.result()
                 result = _result_from_payload(payload)
+                self._queue_persist(result)
                 ordered[spec.experiment_id] = result
                 if on_completed is not None:
                     on_completed(spec, result)
         return [ordered[spec.experiment_id] for spec in specs if spec.experiment_id in ordered]
+
+    def flush_pending(self, *, force: bool = False) -> None:
+        if not self._pending_persist:
+            return
+        now = time.monotonic()
+        if not force and (now - self._last_persist_flush_monotonic) < self.persist_flush_interval_s:
+            return
+        pending = list(self._pending_persist)
+        self._pending_persist.clear()
+        for result in pending:
+            self._persist(result.spec, result.episodes, result.summary, result.failure_report)
+        self._last_persist_flush_monotonic = now
+
+    def _queue_persist(self, result: ExperimentResult) -> None:
+        self._pending_persist.append(result)
+        self.flush_pending(force=False)
 
     def _run_episodes(self, spec: ExperimentSpec) -> list[EpisodeResult]:
         if self._parallel_worker_count(spec) <= 1:
@@ -169,7 +194,7 @@ def _run_spec_worker(
     adapter = build_simulation_adapter(adapter_config)
     runner = ExperimentRunner(adapter, results_dir=results_dir, adapter_config=adapter_config, max_workers=1)
     stage = _stage_by_id(stage_id) if stage_id else None
-    result = runner.run(spec, stage=stage)
+    result = runner.run(spec, stage=stage, persist=False)
     return {
         "spec": result.spec.to_dict(),
         "episodes": [episode.to_dict() for episode in result.episodes],
@@ -199,7 +224,7 @@ def _stage_by_id(stage_id: str | None) -> ResearchStage | None:
 
 def _is_parallel_safe_for_spec(adapter_config: dict[str, Any], spec: ExperimentSpec) -> bool:
     adapter_name = str(adapter_config.get("adapter", "mock")).lower()
-    if adapter_name in {"mock", "competition_platform"}:
+    if adapter_name in {"mock", "competition_platform", "balloon_challenge"}:
         return True
     if adapter_name not in {"stage_router", "auto_research_router"}:
         return False
@@ -207,4 +232,4 @@ def _is_parallel_safe_for_spec(adapter_config: dict[str, Any], spec: ExperimentS
     if not profile_name:
         return False
     profile = dict(adapter_config.get("adapter_profiles", {}).get(profile_name, {}))
-    return str(profile.get("adapter", "")).lower() in {"mock", "competition_platform"}
+    return str(profile.get("adapter", "")).lower() in {"mock", "competition_platform", "balloon_challenge"}

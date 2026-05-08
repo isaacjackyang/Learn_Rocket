@@ -54,22 +54,27 @@ def main() -> None:
             message=f"Running single strategy batch for {spec.strategy_name}.",
         )
     try:
-        result = ExperimentRunner(
+        runner = ExperimentRunner(
             build_simulation_adapter(config),
             runtime_control=runtime_control,
             adapter_config=config,
             max_workers=parallel_workers,
-        ).run(spec)
+        )
+        result = runner.run(spec)
+        runner.flush_pending(force=True)
     except ResearchStopRequested:
         if runtime_control is not None:
+            runtime_control.flush_status()
             runtime_control.mark_stopped()
         print(json.dumps({"status": "stopped"}, ensure_ascii=False))
         raise SystemExit(130)
     except Exception as exc:
         if runtime_control is not None:
+            runtime_control.flush_status()
             runtime_control.mark_error(f"Single strategy batch failed: {exc}")
         raise
     if runtime_control is not None:
+        runtime_control.flush_status()
         runtime_control.mark_completed(
             best_experiment_id=result.spec.experiment_id,
             strategy_name=result.spec.strategy_name,

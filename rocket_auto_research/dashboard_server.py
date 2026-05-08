@@ -102,7 +102,12 @@ class ResearchDashboardManager:
             payload["log_tail"] = self._read_log_tail()
             return payload
 
-    def start(self, config_value: str, parallel_workers: int | None = None) -> dict[str, object]:
+    def start(
+        self,
+        config_value: str,
+        parallel_workers: int | None = None,
+        population_size: int | None = None,
+    ) -> dict[str, object]:
         with self._lock:
             self._refresh_process_state()
             if self._is_research_running(self.control.read_status()):
@@ -111,6 +116,7 @@ class ResearchDashboardManager:
             if not config_path.exists():
                 raise FileNotFoundError(f"Config not found: {config_value}")
             worker_count = self._normalize_parallel_workers(parallel_workers)
+            population_count = self._normalize_population_size(population_size)
             config_entry = describe_config_entry(config_path, self.repo_root)
             self.control_dir.mkdir(parents=True, exist_ok=True)
             self.control.clear_command()
@@ -123,10 +129,15 @@ class ResearchDashboardManager:
                     str(config_path),
                     "--parallel-workers",
                     str(worker_count),
+                    "--population-size",
+                    str(population_count),
                     "--control-dir",
                     str(self.control_dir),
                 ]
-                start_message = f"Starting auto research with {config_path.name} using {worker_count} workers."
+                start_message = (
+                    f"Starting auto research with {config_path.name} "
+                    f"using {worker_count} workers and population size {population_count}."
+                )
             else:
                 launch_cmd = [
                     sys.executable,
@@ -161,6 +172,7 @@ class ResearchDashboardManager:
                 config_path=str(config_path),
                 config_mode=config_entry["mode"],
                 configured_workers=worker_count,
+                population_size=population_count,
                 active_workers=1,
                 worker_mode="serial",
                 log_path=str(log_path),
@@ -176,6 +188,17 @@ class ResearchDashboardManager:
             raise ValueError("parallel_workers must be an integer between 1 and 32.")
         if not 1 <= value <= 32:
             raise ValueError("parallel_workers must be between 1 and 32.")
+        return value
+
+    def _normalize_population_size(self, raw_value: int | None) -> int:
+        if raw_value is None:
+            return 6
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            raise ValueError("population_size must be an integer between 4 and 64.")
+        if not 4 <= value <= 64:
+            raise ValueError("population_size must be between 4 and 64.")
         return value
 
     def pause(self) -> dict[str, object]:
@@ -448,7 +471,14 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         try:
             if parsed.path == "/api/start":
                 parallel_workers = body.get("parallel_workers")
-                self._send_json(self.manager.start(str(body.get("config") or ""), int(parallel_workers) if parallel_workers is not None else None))
+                population_size = body.get("population_size")
+                self._send_json(
+                    self.manager.start(
+                        str(body.get("config") or ""),
+                        int(parallel_workers) if parallel_workers is not None else None,
+                        int(population_size) if population_size is not None else None,
+                    )
+                )
                 return
             if parsed.path == "/api/pause":
                 self._send_json(self.manager.pause())

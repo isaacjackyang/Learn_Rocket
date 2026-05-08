@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import math
+import os
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -39,7 +42,7 @@ def _import_balloon_challenge(repo_root: str | Path):
     root = resolve_first_existing_path(repo_root, DEFAULT_CHALLENGE_REPO)
     if root is None:
         raise FileNotFoundError(balloon_challenge_setup_hint())
-    package_root = root
+    package_root = _prepare_isolated_challenge_runtime(root)
     activerocketpy_root = resolve_first_existing_path(root / "ActiveRocketPy", DEFAULT_CHALLENGE_ACTIVEROCKETPY)
     for candidate in (package_root, activerocketpy_root):
         if candidate is not None and candidate.exists() and str(candidate) not in sys.path:
@@ -64,6 +67,29 @@ def _clear_balloon_cache(repo_root: str | Path) -> None:
                     time.sleep(0.2)
 
 
+def _prepare_isolated_challenge_runtime(repo_root: Path) -> Path:
+    source_package_root = repo_root / "BalloonPoppingGymEnv"
+    if not source_package_root.exists():
+        raise FileNotFoundError(balloon_challenge_setup_hint())
+    runtime_root = Path(tempfile.gettempdir()) / f"rocket_balloon_challenge_runtime_{os.getpid()}"
+    runtime_package_root = runtime_root / "BalloonPoppingGymEnv"
+    source_stamp = source_package_root.stat().st_mtime_ns
+    stamp_path = runtime_root / ".source_stamp"
+    needs_refresh = True
+    if runtime_package_root.exists() and stamp_path.exists():
+        try:
+            needs_refresh = stamp_path.read_text(encoding="utf-8").strip() != str(source_stamp)
+        except OSError:
+            needs_refresh = True
+    if needs_refresh:
+        if runtime_package_root.exists():
+            shutil.rmtree(runtime_package_root, ignore_errors=True)
+        runtime_root.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source_package_root, runtime_package_root, dirs_exist_ok=True)
+        stamp_path.write_text(str(source_stamp), encoding="utf-8")
+    return runtime_root
+
+
 class BalloonChallengeSimulationAdapter(SimulationAdapter):
     def __init__(self, repo_root: str | Path = str(DEFAULT_CHALLENGE_REPO), scenario_number: int = 1) -> None:
         self.repo_root = Path(repo_root)
@@ -82,8 +108,9 @@ class BalloonChallengeSimulationAdapter(SimulationAdapter):
                 f"Balloon challenge scenario not found for repo={repo_root} scenario={scenario_number}. "
                 f"{balloon_challenge_setup_hint()}"
             )
+        runtime_root = _prepare_isolated_challenge_runtime(repo_root.resolve())
         BalloonPoppingEnv = _import_balloon_challenge(repo_root)
-        _clear_balloon_cache(repo_root)
+        _clear_balloon_cache(runtime_root)
         env = BalloonPoppingEnv(render_mode=None, parameters=scenario.raw)
         strategy = build_strategy(spec.strategy_name, dict(spec.params))
         try:

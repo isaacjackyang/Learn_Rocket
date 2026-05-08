@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+from pathlib import Path
 
 from experiments.run_research_loop import _parse_parallel_workers
 from rocket_auto_research.auto_research.experiment_runner import ExperimentRunner, _is_parallel_safe_for_spec
@@ -19,9 +21,9 @@ class ParallelExecutionTests(unittest.TestCase):
         spec = ExperimentSpec(strategy_name="energy_aware", params={}, seeds=[1, 2])
         self.assertTrue(_is_parallel_safe_for_spec({"adapter": "competition_platform"}, spec))
 
-    def test_balloon_challenge_is_not_parallel_safe(self) -> None:
+    def test_balloon_challenge_is_parallel_safe(self) -> None:
         spec = ExperimentSpec(strategy_name="energy_aware", params={}, seeds=[1, 2])
-        self.assertFalse(_is_parallel_safe_for_spec({"adapter": "balloon_challenge"}, spec))
+        self.assertTrue(_is_parallel_safe_for_spec({"adapter": "balloon_challenge"}, spec))
 
     def test_stage_router_uses_profile_safety(self) -> None:
         spec_safe = ExperimentSpec(
@@ -43,7 +45,7 @@ class ParallelExecutionTests(unittest.TestCase):
             },
         }
         self.assertTrue(_is_parallel_safe_for_spec(router_config, spec_safe))
-        self.assertFalse(_is_parallel_safe_for_spec(router_config, spec_unsafe))
+        self.assertTrue(_is_parallel_safe_for_spec(router_config, spec_unsafe))
 
     def test_population_parallel_worker_count_uses_safe_specs(self) -> None:
         runner = ExperimentRunner(
@@ -56,6 +58,23 @@ class ParallelExecutionTests(unittest.TestCase):
             ExperimentSpec(strategy_name="score_based", params={}, seeds=[3, 4]),
         ]
         self.assertEqual(runner._parallel_population_worker_count(specs), 2)
+
+    def test_runner_buffers_persistence_until_flush(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            results_dir = Path(temp_dir) / "runs"
+            runner = ExperimentRunner(
+                MockRocketSimAdapter(),
+                results_dir=results_dir,
+                adapter_config={"adapter": "competition_platform"},
+                max_workers=1,
+                persist_flush_interval_s=9999,
+            )
+            spec = ExperimentSpec(strategy_name="energy_aware", params={}, seeds=[1])
+            result = runner.run(spec)
+            self.assertEqual(result.spec.experiment_id, spec.experiment_id)
+            self.assertFalse((results_dir / spec.experiment_id).exists())
+            runner.flush_pending(force=True)
+            self.assertTrue((results_dir / spec.experiment_id / "summary.json").exists())
 
 
 if __name__ == "__main__":

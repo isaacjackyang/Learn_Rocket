@@ -32,6 +32,17 @@ class RuntimeControlTests(unittest.TestCase):
             with self.assertRaises(ResearchStopRequested):
                 control.check_stop_requested()
 
+    def test_reader_sees_status_updates_from_separate_instance(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            control_dir = Path(temp_dir)
+            writer = ResearchRuntimeControl(control_dir, poll_interval_s=0.01, min_status_write_interval_s=0.0)
+            reader = ResearchRuntimeControl(control_dir, poll_interval_s=0.01)
+            writer.begin_run(config_path="configs/auto_research.yaml", total_generations=None, population_size=6)
+            writer.update_status(message="phase-1", force=True)
+            self.assertEqual(reader.read_status().get("message"), "phase-1")
+            writer.update_status(message="phase-2", force=True)
+            self.assertEqual(reader.read_status().get("message"), "phase-2")
+
 
 if __name__ == "__main__":
     unittest.main()

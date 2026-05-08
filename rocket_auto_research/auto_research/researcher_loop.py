@@ -132,6 +132,7 @@ class ResearcherLoop:
                     stage=self._stage_by_id(current_plan.stage_id),
                     on_completed=_on_completed,
                 )
+                self.runner.flush_pending(force=True)
                 ranked = sorted(evaluated, key=lambda result: result.summary.final_fitness, reverse=True)
                 entries = self._entries_for_generation(ranked)
                 hypotheses = list(current_plan.planner_hypotheses) + generate_hypotheses(ranked[0].failure_report)
@@ -157,20 +158,26 @@ class ResearcherLoop:
                 population = self._next_population(ranked, generation + 1, hypotheses, next_plan)
                 generation += 1
         except ResearchStopRequested:
+            self.runner.flush_pending(force=True)
             self._refresh_dashboard_assets()
             if self.runtime_control is not None:
+                self.runtime_control.flush_status()
                 self.runtime_control.mark_stopped()
             raise
         except Exception as exc:
+            self.runner.flush_pending(force=True)
             self._refresh_dashboard_assets()
             if self.runtime_control is not None:
+                self.runtime_control.flush_status()
                 self.runtime_control.mark_error(f"Auto research failed: {exc}")
             raise
 
         if last_best is None:
             raise RuntimeError("Research loop did not produce any result.")
+        self.runner.flush_pending(force=True)
         self._refresh_dashboard_assets()
         if self.runtime_control is not None:
+            self.runtime_control.flush_status()
             self.runtime_control.mark_completed(
                 best_experiment_id=last_best.spec.experiment_id,
                 strategy_name=last_best.spec.strategy_name,

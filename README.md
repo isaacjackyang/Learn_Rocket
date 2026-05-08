@@ -142,6 +142,8 @@ The loop already supports:
 - plateau detection
 - stuck-mode diversification
 - stage fallback
+- kept-improvement tracking across experiments
+- running-best evolution history with key-change annotations
 
 ## Staged optimization
 
@@ -177,8 +179,13 @@ Used for:
 
 - real `BalloonPoppingChallenge` Gym evaluation
 - official observation/action contract research
+- CPU parallel execution with per-worker isolated challenge runtime copies
 
 If the official dependency checkout is missing, the adapter now raises a clear setup error telling you to run the bootstrap script first.
+
+Implementation note:
+
+The official challenge environment writes cache files into its package tree. To make multi-process workers safe, this repo now creates a per-process temporary runtime copy of `BalloonPoppingGymEnv` before import and execution.
 
 ### ActiveRocketPy backend
 
@@ -219,9 +226,26 @@ Features:
 - day and night themes
 - start, pause, resume, stop
 - worker count control
+- experiment-evolution chart with kept improvements and running-best staircase
 - stage pipeline and promotion progress
 - failure breakdown
 - replay and timeline views
+
+The experiment-evolution view is intended to answer one specific question:
+
+- when experiment `N` improved the score, what changed?
+
+Each completed experiment is shown in chronological order. The chart distinguishes:
+
+- discarded experiments
+- kept improvements
+- running best over time
+
+For each kept improvement, the dashboard annotates the most important change, for example:
+
+- baseline
+- strategy switch
+- largest key parameter change
 
 ## Learning utilities
 
@@ -258,6 +282,8 @@ Tests that require official external repos will skip automatically if those depe
 ```bash
 python experiments/run_research_loop.py --config configs/auto_research.yaml
 ```
+
+Worker count can also be set from the dashboard. New runs will apply the selected worker count to parallel-safe backends, including the official `balloon_challenge` adapter.
 
 ### 5. Start the dashboard
 
