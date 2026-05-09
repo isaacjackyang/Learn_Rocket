@@ -43,19 +43,11 @@ class RLPolicyWrapperStrategy(ModularStrategy):
         phase = self.mission.phase_for(estimated)
         target = self.selector.select(estimated, self.context.current_target_id)
         self.context.current_target_id = target.balloon_id if target is not None else None
+        if self.context.current_target_id is not None:
+            self.context.metadata["last_target_id"] = self.context.current_target_id
         action = predict_action(self.learned_policy, estimated, target)
         action.launch = phase != MissionPhase.WAIT_FOR_LAUNCH
-        if phase == MissionPhase.ASCENT_STABILIZE:
-            action.tvc_x *= self.ascent_turn_scale
-            action.tvc_y *= self.ascent_turn_scale
-            action.throttle = max(action.throttle, self.ascent_throttle_floor)
-        if phase == MissionPhase.DESCENT_RECENTER:
-            action.tvc_x *= self.recenter_turn_scale
-            action.tvc_y *= self.recenter_turn_scale
-        if phase == MissionPhase.RECOVERY_OR_FAILSAFE:
-            action.tvc_x = 0.0
-            action.tvc_y = 0.0
-            action.roll = 0.0
-            action.throttle *= 0.5
+        target_position = target.position if target is not None else None
+        action = self._apply_phase_adjustments(estimated, action, phase, target_position)
         self.context.step_count += 1
         return self.guard.sanitize(action)

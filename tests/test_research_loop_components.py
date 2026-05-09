@@ -2,7 +2,7 @@ import unittest
 
 from rocket_auto_research.auto_research.experiment_spec import ExperimentSpec
 from rocket_auto_research.auto_research.failure_analyzer import FailureReport
-from rocket_auto_research.auto_research.hypothesis_generator import generate_hypotheses
+from rocket_auto_research.auto_research.hypothesis_generator import ResearchHypothesis, generate_hypotheses
 from rocket_auto_research.auto_research.mutation_engine import MutationEngine
 from rocket_auto_research.auto_research.strategy_crossover import StrategyCrossover
 
@@ -38,6 +38,41 @@ class ResearchLoopComponentTests(unittest.TestCase):
         self.assertIn(child.params["guidance_mode"], ["fixed", "predictive", "short_horizon"])
         self.assertEqual(child.params["challenge_scenario_number"], 1)
         self.assertNotEqual(child.experiment_id, parent.experiment_id)
+
+    def test_mutation_engine_can_add_ascent_targeting_params_from_hypothesis(self) -> None:
+        engine = MutationEngine(
+            parameter_space={
+                "ascent_targeting_turn_scale": {"min": 0.35, "max": 1.0, "default": 0.72, "sigma": 0.08},
+                "ascent_targeting_altitude_m": {"min": 120.0, "max": 900.0, "default": 270.0, "sigma": 45.0},
+            },
+            mutation_rate=0.0,
+            strategy_choices=["energy_aware"],
+        )
+        parent = ExperimentSpec(
+            strategy_name="energy_aware",
+            params={},
+            seeds=[0, 1],
+            note="parent",
+        )
+        child = engine.mutate(
+            parent,
+            generation=1,
+            seeds=[2, 3],
+            hypotheses=[
+                ResearchHypothesis(
+                    hypothesis_id="early_route_planning",
+                    rationale="Start route planning during ascent.",
+                    adjustments={
+                        "ascent_targeting_turn_scale": 0.1,
+                        "ascent_targeting_altitude_m": -80.0,
+                    },
+                )
+            ],
+        )
+        self.assertIn("ascent_targeting_turn_scale", child.params)
+        self.assertIn("ascent_targeting_altitude_m", child.params)
+        self.assertGreater(child.params["ascent_targeting_turn_scale"], 0.72)
+        self.assertLess(child.params["ascent_targeting_altitude_m"], 270.0)
 
     def test_mutation_engine_avoids_blocked_region(self) -> None:
         engine = MutationEngine(
@@ -88,3 +123,15 @@ class ResearchLoopComponentTests(unittest.TestCase):
         child = crossover.crossover(left, right, generation=1, seeds=[1, 2])
         self.assertIn(child.params["target_selector"], {"score_based", "reachable"})
         self.assertIn(child.params["guidance_mode"], {"fixed", "short_horizon"})
+
+    def test_hypotheses_bias_intercept_timing_toward_earlier_ascent_targeting(self) -> None:
+        report = FailureReport(
+            counts={"near_miss": 3},
+            rates={"near_miss": 0.3},
+            dominant_failure="near_miss",
+            notes=[],
+        )
+        hypotheses = generate_hypotheses(report)
+        target_hypothesis = next(h for h in hypotheses if h.hypothesis_id == "improve_intercept_timing")
+        self.assertIn("ascent_targeting_turn_scale", target_hypothesis.adjustments)
+        self.assertIn("ascent_targeting_altitude_m", target_hypothesis.adjustments)

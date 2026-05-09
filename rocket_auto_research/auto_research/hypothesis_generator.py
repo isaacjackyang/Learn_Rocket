@@ -52,6 +52,8 @@ def generate_hypotheses(failure_report: FailureReport) -> list[ResearchHypothesi
                     "lookahead_time": 0.12,
                     "target_selector": "reachable",
                     "wind_comp_gain": 0.08,
+                    "ascent_targeting_turn_scale": 0.14,
+                    "ascent_targeting_altitude_m": -120.0,
                 },
                 preferred_strategies=["predictive_intercept", "mpc_light", "energy_aware"],
             )
@@ -125,6 +127,8 @@ def generate_hypotheses(failure_report: FailureReport) -> list[ResearchHypothesi
                     "launch_wait_time": -0.03,
                     "climb_bias_altitude_m": 80.0,
                     "target_energy_weight": 0.1,
+                    "ascent_targeting_turn_scale": -0.1,
+                    "ascent_targeting_altitude_m": 120.0,
                 },
                 preferred_strategies=["predictive_intercept", "energy_aware", "score_based"],
             )
