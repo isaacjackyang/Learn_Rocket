@@ -2,7 +2,7 @@ import unittest
 
 from rocket_auto_research.auto_research.evaluator import evaluate_episode_set
 from rocket_auto_research.auto_research.next_step_planner import NextStepPlanner
-from rocket_auto_research.auto_research.problem_definition import default_problem_stages
+from rocket_auto_research.auto_research.problem_definition import build_stage_bootstrap_specs, default_problem_stages
 from rocket_auto_research.auto_research.research_memory import MemoryRecord, ResearchMemory
 from rocket_auto_research.auto_research.simulation import EpisodeResult
 
@@ -114,6 +114,20 @@ class StagedAutoResearchTests(unittest.TestCase):
         )
         self.assertEqual(plan.stage_id, "launch_valid")
         self.assertGreater(len(plan.bootstrap_specs), 0)
+
+    def test_energy_margin_bootstrap_specs_include_ascent_targeting_params(self) -> None:
+        stage = next(stage for stage in default_problem_stages() if stage.stage_id == "energy_margin")
+        specs = build_stage_bootstrap_specs(
+            stage=stage,
+            generation=3,
+            seeds=[1, 2],
+            fixed_params={"challenge_scenario_number": 0},
+            available_strategies=["energy_aware", "predictive_intercept", "score_based"],
+        )
+        self.assertGreater(len(specs), 0)
+        params = specs[0].params
+        self.assertIn("ascent_targeting_turn_scale", params)
+        self.assertIn("ascent_targeting_altitude_m", params)
 
     def test_plateau_detector_flags_flat_stage(self) -> None:
         records = [

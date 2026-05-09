@@ -17,7 +17,15 @@ MODULE_GROUPS = {
         "target_lock_duration",
         "switching_penalty",
     },
-    "guidance": {"guidance_mode", "lookahead_time", "desired_speed", "branch_count", "horizon_s"},
+    "guidance": {
+        "guidance_mode",
+        "lookahead_time",
+        "desired_speed",
+        "branch_count",
+        "horizon_s",
+        "ascent_targeting_turn_scale",
+        "ascent_targeting_altitude_m",
+    },
     "control": {"controller_mode", "kp", "kd", "max_tvc", "throttle", "failsafe_tilt_rate"},
     "launch": {"launch_wait_time", "stabilize_duration"},
 }

@@ -67,13 +67,15 @@ def default_problem_stages() -> list[ResearchStage]:
             planner_hypotheses=[
                 StageHypothesisSeed(
                     hypothesis_id="stage_ascent_stable",
-                    rationale="Bias toward stable climb with limited gimbal demand and early energy preservation.",
+                    rationale="Bias toward stable climb while allowing shallow route planning toward reachable balloons.",
                     adjustments={
                         "kp": -0.14,
                         "kd": 0.05,
                         "max_tvc": -1.5,
                         "throttle": 0.05,
                         "target_lock_duration": 0.4,
+                        "ascent_targeting_turn_scale": 0.08,
+                        "ascent_targeting_altitude_m": -60.0,
                     },
                     preferred_strategies=["energy_aware", "score_based"],
                 )
@@ -88,12 +90,14 @@ def default_problem_stages() -> list[ResearchStage]:
             planner_hypotheses=[
                 StageHypothesisSeed(
                     hypothesis_id="stage_energy_margin",
-                    rationale="Increase usable ascent energy before spending control authority on turning toward targets.",
+                    rationale="Keep ascent energy high while beginning target-oriented route shaping before full intercept mode.",
                     adjustments={
                         "throttle": 0.08,
                         "launch_wait_time": -0.05,
                         "lookahead_time": 0.12,
-                        "target_angle_weight": -0.12,
+                        "target_angle_weight": 0.06,
+                        "ascent_targeting_turn_scale": 0.16,
+                        "ascent_targeting_altitude_m": -90.0,
                     },
                     preferred_strategies=["energy_aware", "predictive_intercept"],
                 )
@@ -114,6 +118,8 @@ def default_problem_stages() -> list[ResearchStage]:
                         "target_distance_weight": 0.1,
                         "target_angle_weight": 0.08,
                         "switching_penalty": 0.2,
+                        "ascent_targeting_turn_scale": 0.1,
+                        "ascent_targeting_altitude_m": -70.0,
                     },
                     preferred_strategies=["predictive_intercept", "score_based", "mpc_light"],
                 )
@@ -246,6 +252,8 @@ def build_stage_bootstrap_specs(
                     "switching_penalty": 1.5,
                     "target_lock_duration": 1.3,
                     "lookahead_time": 1.35,
+                    "ascent_targeting_turn_scale": 0.52,
+                    "ascent_targeting_altitude_m": 320.0,
                 },
             )
         ]
@@ -263,6 +271,8 @@ def build_stage_bootstrap_specs(
                     "lookahead_time": 1.4,
                     "target_distance_weight": 1.1,
                     "target_angle_weight": 0.5,
+                    "ascent_targeting_turn_scale": 0.72,
+                    "ascent_targeting_altitude_m": 240.0,
                 },
             )
         ]
@@ -279,6 +289,8 @@ def build_stage_bootstrap_specs(
                     "target_distance_weight": 1.3,
                     "target_angle_weight": 0.8,
                     "switching_penalty": 1.6,
+                    "ascent_targeting_turn_scale": 0.86,
+                    "ascent_targeting_altitude_m": 180.0,
                 },
             )
         ]
@@ -295,6 +307,8 @@ def build_stage_bootstrap_specs(
                     "target_distance_weight": 1.4,
                     "target_angle_weight": 0.9,
                     "switching_penalty": 1.5,
+                    "ascent_targeting_turn_scale": 0.9,
+                    "ascent_targeting_altitude_m": 160.0,
                 },
             )
         ]

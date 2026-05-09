@@ -135,6 +135,18 @@ global_parameter_space:
     type: float
     min: 0.1
     max: 1.5
+  ascent_targeting_turn_scale:
+    type: float
+    min: 0.35
+    max: 1.0
+    default: 0.72
+    sigma: 0.08
+  ascent_targeting_altitude_m:
+    type: float
+    min: 120.0
+    max: 900.0
+    default: 270.0
+    sigma: 45.0
   switching_penalty:
     type: float
     min: 0.0

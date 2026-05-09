@@ -19,6 +19,8 @@ BLOCK_REGION_KEYS = {
     "target_angle_weight",
     "target_height_weight",
     "target_lock_duration",
+    "ascent_targeting_turn_scale",
+    "ascent_targeting_altitude_m",
     "switching_penalty",
     "kp",
     "kd",
