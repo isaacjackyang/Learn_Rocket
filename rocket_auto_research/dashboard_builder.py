@@ -114,21 +114,21 @@ No research log yet.</pre>
           <h2 class="bilingual"><span class="zh">自動研究進展</span><span class="en">Auto Research Progress</span></h2>
         </div>
       </div>
-      <div id="progress-summary" class="pill trend-pill">載入研究進展中 / Loading research progress</div>
+      <div id="progress-summary" class="pill trend-pill">載入實驗演進中 / Loading experiment evolution</div>
       <div class="control-row">
         <label>
-          <span class="bilingual"><span class="zh">憿舐內撖阡?</span><span class="en">Experiment window</span></span>
+          <span class="bilingual"><span class="zh">實驗範圍</span><span class="en">Experiment window</span></span>
           <select id="progress-window">
-            <option value="all">?券 / All</option>
-            <option value="20">?餈?20 ??/ Last 20</option>
-            <option value="50">?餈?50 ??/ Last 50</option>
-            <option value="100">?餈?100 ??/ Last 100</option>
-            <option value="250">?餈?250 ??/ Last 250</option>
-            <option value="500">?餈?500 ??/ Last 500</option>
+            <option value="all">全部 / All</option>
+            <option value="20">最近 20 次 / Last 20</option>
+            <option value="50">最近 50 次 / Last 50</option>
+            <option value="100">最近 100 次 / Last 100</option>
+            <option value="250">最近 250 次 / Last 250</option>
+            <option value="500">最近 500 次 / Last 500</option>
           </select>
         </label>
         <label>
-          <span class="bilingual"><span class="zh">Y ?憿舐內</span><span class="en">Y-axis metric</span></span>
+          <span class="bilingual"><span class="zh">Y 軸指標</span><span class="en">Y-axis metric</span></span>
           <select id="progress-metric">
             <option value="final_fitness">Final fitness</option>
             <option value="mean_popped">Mean popped</option>
@@ -1430,6 +1430,19 @@ APP_JS = """(() => {
         : "n/a";
     const message = status?.message || "Idle.";
     const updatedAt = status?.updated_at || status?.started_at || "n/a";
+    const bufferedPending = Number(status?.buffered_results_pending);
+    const bufferedPersisted = Number(status?.persisted_results_count);
+    const flushTotal = Number(status?.buffered_results_flush_total);
+    const flushCompleted = Number(status?.buffered_results_flush_completed);
+    const flushInProgress = !!status?.buffered_results_flushing;
+    const bufferLabel = Number.isFinite(bufferedPending) ? `${bufferedPending}` : "n/a";
+    const bufferDetail = Number.isFinite(bufferedPersisted) ? `${bufferedPersisted} persisted` : "n/a";
+    const flushLabel = Number.isFinite(flushCompleted) && Number.isFinite(flushTotal) && flushTotal > 0
+      ? `${flushCompleted}/${flushTotal}`
+      : flushInProgress
+        ? "starting"
+        : "idle";
+    const flushDetail = flushInProgress ? "writing buffered results" : "no active flush";
     const stageObjective = stageContext?.stage_description || "n/a";
     const stageThreshold = percentLabel(stageContext?.success_threshold);
     const recentSuccess = percentLabel(stageContext?.recent_stage_success_rate);
@@ -1477,9 +1490,19 @@ APP_JS = """(() => {
     const summaryEn = phase === "running"
       ? `Currently in stage ${stageLabel}, generation ${generationLabel}, evaluating experiment ${experimentProgress}.`
       : `${phaseEn}. ${message}`;
+    const summaryTextZh = phase === "running"
+      ? `目前在 ${stageLabel} 階段，第 ${generationLabel} 代，正在評估第 ${experimentProgress} 個實驗。`
+      : phase === "stopping" && flushInProgress
+        ? `正在停止研究，並將 RAM 緩衝結果寫入磁碟：${flushLabel}。`
+        : `${phaseZh}。${message}`;
+    const summaryTextEn = phase === "running"
+      ? `Currently in stage ${stageLabel}, generation ${generationLabel}, evaluating experiment ${experimentProgress}.`
+      : phase === "stopping" && flushInProgress
+        ? `Stopping research and flushing buffered results: ${flushLabel}.`
+        : `${phaseEn}. ${message}`;
     els.researchStatusText.innerHTML = `
       <div class="status-summary bilingual">
-        ${dualLine(summaryZh, summaryEn)}
+        ${dualLine(summaryTextZh, summaryTextEn)}
       </div>
       <div class="status-visuals">
         <div class="status-visual-panel">
@@ -1518,6 +1541,8 @@ APP_JS = """(() => {
         ${statusCard("策略", "Strategy", strategyLabel)}
         ${statusCard("實驗 ID", "Experiment ID", experimentLabel)}
         ${statusCard("Workers", "Workers", workerLabel, workerDetail)}
+        ${statusCard("RAM 緩衝", "RAM buffer", bufferLabel, bufferDetail)}
+        ${statusCard("寫檔進度", "Flush progress", flushLabel, flushDetail)}
         ${statusCard("設定檔", "Config", shortPath(configLabel), configLabel)}
         ${statusCard("訊息", "Message", message)}
         ${statusCard("規劃理由", "Planner rationale", plannerRationale)}
@@ -1614,10 +1639,11 @@ APP_JS = """(() => {
     }, { displayModeBar: false, responsive: true });
   }
 
-  function renderResearchProgressChart() {
+  function renderResearchProgressChartLegacy() {
     const progress = Array.isArray(data.research_progress) ? data.research_progress : [];
     if (!progress.length) {
       els.progressSummary.innerHTML = dualLine("尚無研究進展資料", "No research progress data yet");
+      els.progressSummary.innerHTML = dualLine("尚無實驗演進資料", "No experiment evolution data yet");
       Plotly.newPlot("progress-chart", [], {
         margin: { l: 48, r: 12, t: 12, b: 48 },
         paper_bgcolor: "rgba(0,0,0,0)",
@@ -1763,6 +1789,88 @@ APP_JS = """(() => {
     }, { displayModeBar: false, responsive: true });
   }
 
+  function renderResearchProgressChart() {
+    const progress = Array.isArray(data.research_progress) ? data.research_progress : [];
+    if (!progress.length) {
+      els.progressSummary.innerHTML = dualLine("尚無實驗演進資料", "No experiment evolution data yet");
+      Plotly.newPlot("progress-chart", [], {
+        margin: { l: 48, r: 12, t: 12, b: 48 },
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: themeColor("--plot-bg", "rgba(255,255,255,0.55)"),
+      }, { displayModeBar: false, responsive: true });
+      return;
+    }
+    const maxExperiments = state.progressWindow === "all" ? null : Number(state.progressWindow);
+    const visibleProgress = Number.isFinite(maxExperiments) && maxExperiments > 0 ? progress.slice(-maxExperiments) : progress;
+    const metricConfig = state.progressMetric === "mean_popped"
+      ? {
+          key: "mean_popped",
+          keptKey: "kept_popped",
+          runningBestKey: "running_best_popped",
+          annotationKey: "annotation_popped",
+          summaryLabelZh: "平均打到數",
+          summaryLabelEn: "mean popped",
+          axisTitle: "Mean popped (higher is better)",
+        }
+      : {
+          key: "final_fitness",
+          keptKey: "kept_fitness",
+          runningBestKey: "running_best_fitness",
+          annotationKey: "annotation_fitness",
+          summaryLabelZh: "最終 fitness",
+          summaryLabelEn: "final fitness",
+          axisTitle: "Final fitness (higher is better)",
+        };
+    const kept = visibleProgress.filter((entry) => entry[metricConfig.keptKey]);
+    const discarded = visibleProgress.filter((entry) => !entry[metricConfig.keptKey]);
+    const best = visibleProgress.map((entry) => entry[metricConfig.runningBestKey]);
+    const windowLabelZh = state.progressWindow === "all" ? "全部" : `最近 ${state.progressWindow} 次`;
+    const windowLabelEn = state.progressWindow === "all" ? "all experiments" : `last ${state.progressWindow}`;
+    els.progressSummary.innerHTML = dualLine(
+      `${windowLabelZh} / 顯示 ${visibleProgress.length} 次，保留 ${kept.length} 次以 ${metricConfig.summaryLabelZh} 計算的提升`,
+      `Showing ${windowLabelEn}: ${visibleProgress.length} experiments, ${kept.length} kept improvements by ${metricConfig.summaryLabelEn}`
+    );
+    const traces = [
+      {
+        x: discarded.map((entry) => entry.index),
+        y: discarded.map((entry) => entry[metricConfig.key]),
+        text: discarded.map((entry) => `${entry.strategy_name} (${entry.experiment_id})`),
+        type: "scatter",
+        mode: "markers",
+        name: "Discarded",
+        marker: { color: "rgba(140,140,140,0.45)", size: 8 },
+      },
+      {
+        x: kept.map((entry) => entry.index),
+        y: kept.map((entry) => entry[metricConfig.key]),
+        text: kept.map((entry) => entry[metricConfig.annotationKey] || `${entry.strategy_name} (${entry.experiment_id})`),
+        type: "scatter",
+        mode: "markers+text",
+        name: "Kept",
+        textposition: "top right",
+        textfont: { color: themeColor("--accent", "#1d6b69"), size: 12 },
+        marker: { color: "#2fbf71", size: 11, line: { color: "#0d5d35", width: 1.5 } },
+      },
+      {
+        x: visibleProgress.map((entry) => entry.index),
+        y: best,
+        text: visibleProgress.map((entry) => entry[metricConfig.annotationKey] || ""),
+        type: "scatter",
+        mode: "lines",
+        name: "Running best",
+        line: { color: "#5dc98f", width: 4, shape: "hv" },
+      },
+    ];
+    Plotly.newPlot("progress-chart", traces, {
+      margin: { l: 56, r: 12, t: 12, b: 48 },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: themeColor("--plot-bg", "rgba(255,255,255,0.55)"),
+      xaxis: { title: "Experiment #" },
+      yaxis: { title: metricConfig.axisTitle },
+      legend: { orientation: "h", x: 1, xanchor: "right", y: 1.12 },
+    }, { displayModeBar: false, responsive: true });
+  }
+
   function populateFilters() {
     const strategies = ["all", ...new Set(data.runs.map((run) => run.strategy_name))];
     const adapters = ["all", ...new Set(data.runs.map((run) => run.adapter || "unknown"))];
@@ -1801,7 +1909,30 @@ APP_JS = """(() => {
     if (!run || !run.trajectory_index || run.trajectory_index.length === 0) {
       return null;
     }
-    return run.trajectory_index.find((entry) => replayPointCount(entry) > 1) || run.trajectory_index[0];
+    const ranked = [...run.trajectory_index].sort((left, right) => {
+      const leftAnimated = replayPointCount(left) > 1 ? 1 : 0;
+      const rightAnimated = replayPointCount(right) > 1 ? 1 : 0;
+      if (rightAnimated !== leftAnimated) {
+        return rightAnimated - leftAnimated;
+      }
+      const leftPopped = Number(left?.popped || 0);
+      const rightPopped = Number(right?.popped || 0);
+      if (rightPopped !== leftPopped) {
+        return rightPopped - leftPopped;
+      }
+      const leftScore = Number(left?.score || 0);
+      const rightScore = Number(right?.score || 0);
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+      const leftFrames = replayPointCount(left);
+      const rightFrames = replayPointCount(right);
+      if (rightFrames !== leftFrames) {
+        return rightFrames - leftFrames;
+      }
+      return Number(left?.seed || 0) - Number(right?.seed || 0);
+    });
+    return ranked[0] || null;
   }
 
   function updateRunCollections() {
@@ -1847,7 +1978,7 @@ APP_JS = """(() => {
     return data.runs.find((run) => run.experiment_id === state.selectedRunId) || null;
   }
 
-  function populateSeedOptions() {
+  function populateSeedOptions(forcePreferred = false) {
     const run = currentRun();
     els.seedSelect.innerHTML = "";
     if (!run) {
@@ -1861,9 +1992,10 @@ APP_JS = """(() => {
         String(trajectory.seed),
       );
     });
+    const preferredSeed = preferredSeedEntry(run)?.seed ?? null;
     const currentSeedExists = run.trajectory_index.some((entry) => String(entry.seed) === String(state.selectedSeed));
-    if (!currentSeedExists) {
-      state.selectedSeed = preferredSeedEntry(run)?.seed ?? null;
+    if (forcePreferred || !currentSeedExists) {
+      state.selectedSeed = preferredSeed;
     }
     els.seedSelect.value = state.selectedSeed !== null ? String(state.selectedSeed) : "";
   }
@@ -2006,6 +2138,54 @@ APP_JS = """(() => {
       script.onerror = () => reject(new Error(`Failed to load ${trajectoryMeta.file}`));
       document.body.appendChild(script);
     });
+  }
+
+  function clearReplayPlots(messageZh = "尚無可用回放", messageEn = "No replay available") {
+    stopPlayback();
+    state.replayBounds = null;
+    state.frameIndex = 0;
+    Plotly.purge("replay-plot");
+    Plotly.purge("timeline-chart");
+    Plotly.newPlot("replay-plot", [], {
+      margin: { l: 0, r: 0, t: 0, b: 0 },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "rgba(0,0,0,0)",
+      annotations: [
+        {
+          text: `${escapeHtml(messageZh)}<br>${escapeHtml(messageEn)}`,
+          x: 0.5,
+          y: 0.5,
+          xref: "paper",
+          yref: "paper",
+          showarrow: false,
+          font: { size: 16, color: themeColor("--muted", "#6b7280") },
+        },
+      ],
+    }, { displayModeBar: false, responsive: true });
+    Plotly.newPlot("timeline-chart", [], {
+      margin: { l: 40, r: 10, t: 10, b: 40 },
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: themeColor("--plot-bg", "rgba(255,255,255,0.55)"),
+      annotations: [
+        {
+          text: `${escapeHtml(messageZh)}<br>${escapeHtml(messageEn)}`,
+          x: 0.5,
+          y: 0.5,
+          xref: "paper",
+          yref: "paper",
+          showarrow: false,
+          font: { size: 14, color: themeColor("--muted", "#6b7280") },
+        },
+      ],
+    }, { displayModeBar: false, responsive: true });
+    els.frameSlider.min = "0";
+    els.frameSlider.max = "0";
+    els.frameSlider.value = "0";
+    els.frameReadout.innerHTML = dualLine("Frame 0 / 0", "Frame 0 / 0");
+    setButtonLabel(els.playToggle, "Static", "Static");
+    els.playToggle.disabled = true;
+    els.resetReplay.onclick = null;
+    els.frameSlider.oninput = null;
   }
 
   function buildReplayMarkers(points) {
@@ -2209,14 +2389,19 @@ APP_JS = """(() => {
     state.selectedSeed = null;
     syncSelectedRow();
     els.runSelect.value = experimentId;
-    populateSeedOptions();
+    populateSeedOptions(true);
     renderRunDetails();
-    await renderSelectedReplay();
+    try {
+      await renderSelectedReplay();
+    } catch (error) {
+      clearReplayPlots("回放載入失敗", `Replay load failed: ${error.message || error}`);
+    }
   }
 
   async function renderSelectedReplay() {
     const run = currentRun();
     if (!run || state.selectedSeed === null) {
+      clearReplayPlots("尚無可用回放", "No replay available");
       return;
     }
     const payload = await ensureTrajectoryLoaded(run.experiment_id, state.selectedSeed);
@@ -2317,7 +2502,11 @@ APP_JS = """(() => {
     els.seedSelect.addEventListener("change", async (event) => {
       stopPlayback();
       state.selectedSeed = Number(event.target.value);
-      await renderSelectedReplay();
+      try {
+        await renderSelectedReplay();
+      } catch (error) {
+        clearReplayPlots("回放載入失敗", `Replay load failed: ${error.message || error}`);
+      }
     });
       els.speedSelect.addEventListener("change", (event) => {
         state.speed = Number(event.target.value);

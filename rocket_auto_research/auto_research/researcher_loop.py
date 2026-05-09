@@ -72,6 +72,8 @@ class ResearcherLoop:
                 current_plan = self._plan_generation(generation, records)
                 if population is None:
                     population = self._initial_population(current_plan)
+                generation_population_size = self._effective_population_size(current_plan)
+                generation_seed_count = self._effective_seeds_per_experiment(current_plan)
                 if self.runtime_control is not None:
                     self.runtime_control.wait_if_paused()
                     self.runtime_control.check_stop_requested()
@@ -86,6 +88,8 @@ class ResearcherLoop:
                             f"Running generation {generation + 1} "
                             f"for stage {current_plan.stage_id}."
                         ),
+                        population_size=generation_population_size,
+                        seeds_per_experiment=generation_seed_count,
                         completed_experiments=completed_experiments,
                         active_workers=population_workers if population_workers > 1 else seed_workers,
                         worker_mode="generation" if population_workers > 1 else "seed" if seed_workers > 1 else "serial",
@@ -103,7 +107,8 @@ class ResearcherLoop:
                         current_stage=current_plan.stage_id,
                         message=(
                             f"Evaluating {len(population)} experiments under stage {current_plan.stage_id} "
-                            f"using {self.runtime_control.read_status().get('active_workers', 1)} workers."
+                            f"using {self.runtime_control.read_status().get('active_workers', 1)} workers "
+                            f"with {generation_seed_count} seeds per experiment."
                         ),
                         completed_experiments=completed_experiments,
                     )
@@ -190,17 +195,18 @@ class ResearcherLoop:
         return f"{generation + 1}/{self.config.generations}"
 
     def _initial_population(self, plan: NextStepPlan) -> list[ExperimentSpec]:
-        seeds = self._generation_seeds(0)
+        seeds = self._generation_seeds(0, plan)
+        target_population_size = self._effective_population_size(plan)
         population: list[ExperimentSpec] = []
         for bootstrap in plan.bootstrap_specs:
-            if len(population) >= self.config.population_size:
+            if len(population) >= target_population_size:
                 break
-            population.append(self._apply_stage_context(bootstrap, plan, seeds))
+            population.append(self._finalize_candidate(bootstrap, plan, seeds, generation=0, salt=f"bootstrap:{len(population)}"))
         for index, bootstrap in enumerate(self.config.bootstrap_specs or []):
-            if len(population) >= self.config.population_size:
+            if len(population) >= target_population_size:
                 break
             population.append(
-                self._apply_stage_context(
+                self._finalize_candidate(
                     ExperimentSpec(
                         strategy_name=bootstrap.strategy_name,
                         params=dict(bootstrap.params),
@@ -211,19 +217,24 @@ class ResearcherLoop:
                     ),
                     plan,
                     seeds,
+                    generation=0,
+                    salt=f"config-bootstrap:{index}",
                 )
             )
-        while len(population) < self.config.population_size:
+        while len(population) < target_population_size:
             population.append(
-                self._apply_stage_context(
+                self._finalize_candidate(
                     self.mutator.random_spec(
                         generation=0,
                         seeds=seeds,
                         preferred_strategies=plan.preferred_strategies,
                         salt=f"init:{len(population)}:{plan.stage_id}",
+                        blocked_regions=plan.blocked_regions,
                     ),
                     plan,
                     seeds,
+                    generation=0,
+                    salt=f"init:{len(population)}",
                 )
             )
         return population
@@ -235,63 +246,85 @@ class ResearcherLoop:
         hypotheses: list[ResearchHypothesis],
         plan: NextStepPlan,
     ) -> list[ExperimentSpec]:
+        target_population_size = self._effective_population_size(plan)
         effective_elite_count = self.config.elite_count if not plan.stuck_mode else max(1, self.config.elite_count - 1)
+        if plan.hard_reset_mode:
+            effective_elite_count = 0
         elites = ranked[:effective_elite_count]
-        seeds = self._generation_seeds(generation)
+        seeds = self._generation_seeds(generation, plan)
         next_population: list[ExperimentSpec] = list(plan.bootstrap_specs)
-        next_population = [self._apply_stage_context(spec, plan, seeds) for spec in next_population]
+        next_population = [
+            self._finalize_candidate(spec, plan, seeds, generation=generation, salt=f"stage-bootstrap:{index}")
+            for index, spec in enumerate(next_population)
+        ]
         next_population.extend(
             [
-            self._apply_stage_context(
-                ExperimentSpec(
-                    strategy_name=elite.spec.strategy_name,
-                    params=dict(elite.spec.params),
-                    seeds=seeds,
-                    note=f"elite_from:{elite.spec.experiment_id}",
+                self._finalize_candidate(
+                    ExperimentSpec(
+                        strategy_name=elite.spec.strategy_name,
+                        params=dict(elite.spec.params),
+                        seeds=seeds,
+                        note=f"elite_from:{elite.spec.experiment_id}",
+                        generation=generation,
+                        parent_ids=[elite.spec.experiment_id],
+                    ),
+                    plan,
+                    seeds,
                     generation=generation,
-                    parent_ids=[elite.spec.experiment_id],
-                ),
-                plan,
-                seeds,
-            )
-            for elite in elites
+                    salt=f"elite:{index}",
+                )
+                for index, elite in enumerate(elites)
             ]
         )
 
+        parent_specs = [elite.spec for elite in elites] or list(plan.bootstrap_specs) or [ranked[0].spec]
+
         for index, hypothesis in enumerate(hypotheses):
-            if len(next_population) >= self.config.population_size:
+            if len(next_population) >= target_population_size:
                 break
-            elite = elites[index % len(elites)]
+            parent_spec = parent_specs[index % len(parent_specs)]
             next_population.append(
-                self._apply_stage_context(
+                self._finalize_candidate(
                     self.mutator.mutate(
-                        elite.spec,
+                        parent_spec,
                         generation=generation,
                         seeds=seeds,
                         hypotheses=[hypothesis],
                         mutation_scale=plan.mutation_scale,
+                        blocked_regions=plan.blocked_regions,
                     ),
                     plan,
                     seeds,
+                    generation=generation,
+                    salt=f"hypothesis:{index}",
                 )
             )
 
-        random_injection_target = max(1, int(round(self.config.population_size * plan.random_injection_ratio))) if plan.stuck_mode else 0
+        random_injection_target = max(1, int(round(target_population_size * plan.random_injection_ratio))) if plan.stuck_mode else 0
         random_injected = 0
-        while len(next_population) < self.config.population_size:
-            if plan.stuck_mode and random_injected < random_injection_target:
+        while len(next_population) < target_population_size:
+            if plan.stuck_mode and (plan.hard_reset_mode or random_injected < random_injection_target):
                 candidate = self.mutator.random_spec(
                     generation=generation,
                     seeds=seeds,
                     preferred_strategies=plan.preferred_strategies or None,
                     salt=f"stuck-fill:{generation}:{len(next_population)}:{plan.stage_id}",
+                    blocked_regions=plan.blocked_regions,
                 )
-                next_population.append(self._apply_stage_context(candidate, plan, seeds))
+                next_population.append(
+                    self._finalize_candidate(
+                        candidate,
+                        plan,
+                        seeds,
+                        generation=generation,
+                        salt=f"stuck-fill:{len(next_population)}",
+                    )
+                )
                 random_injected += 1
                 continue
-            index = len(next_population) - effective_elite_count
-            left = elites[index % len(elites)].spec
-            right = elites[(index + 1) % len(elites)].spec
+            index = len(next_population)
+            left = parent_specs[index % len(parent_specs)]
+            right = parent_specs[(index + 1) % len(parent_specs)]
             rng = random.Random(f"next-pop:{generation}:{index}:{left.experiment_id}:{right.experiment_id}")
             if rng.random() < self.config.crossover_rate:
                 candidate = self.crossover.crossover(left, right, generation=generation, seeds=seeds)
@@ -302,6 +335,7 @@ class ResearcherLoop:
                     seeds=seeds,
                     hypotheses=hypotheses,
                     mutation_scale=plan.mutation_scale,
+                    blocked_regions=plan.blocked_regions,
                 )
             else:
                 preferred = [strategy for hypothesis in hypotheses for strategy in hypothesis.preferred_strategies]
@@ -310,13 +344,24 @@ class ResearcherLoop:
                     seeds=seeds,
                     preferred_strategies=preferred or plan.preferred_strategies or None,
                     salt=f"fill:{generation}:{len(next_population)}:{plan.stage_id}",
+                    blocked_regions=plan.blocked_regions,
                 )
-            next_population.append(self._apply_stage_context(candidate, plan, seeds))
-        return next_population[: self.config.population_size]
+            next_population.append(
+                self._finalize_candidate(
+                    candidate,
+                    plan,
+                    seeds,
+                    generation=generation,
+                    salt=f"fill:{index}",
+                )
+            )
+        return next_population[:target_population_size]
 
-    def _generation_seeds(self, generation: int) -> list[int]:
-        start = self.config.base_seed + generation * self.config.seeds_per_experiment
-        return list(range(start, start + self.config.seeds_per_experiment))
+    def _generation_seeds(self, generation: int, plan: NextStepPlan | None = None) -> list[int]:
+        seeds_per_experiment = self._effective_seeds_per_experiment(plan)
+        seed_stride = max(self.config.seeds_per_experiment, 64)
+        start = self.config.base_seed + generation * seed_stride
+        return list(range(start, start + seeds_per_experiment))
 
     def _entries_for_generation(self, ranked: list[ExperimentResult]) -> list[LeaderboardEntry]:
         entries: list[LeaderboardEntry] = []
@@ -347,8 +392,14 @@ class ResearcherLoop:
             fixed_params=self.config.fixed_params,
             seeds=seeds,
             available_strategies=self.config.strategies,
+            parameter_space=self.config.parameter_space,
+            base_population_size=self.config.population_size,
+            base_seeds_per_experiment=self.config.seeds_per_experiment,
             stage_stats_provider=self.memory.stage_stats,
             plateau_detector=self.memory.detect_stage_plateau,
+            plateau_streak_provider=self.memory.plateau_streak,
+            blocked_region_provider=self.memory.build_blocked_regions,
+            reentry_boost_provider=self.memory.reentry_boost_state,
         )
         override = dict(self.config.stage_policy.get(plan.stage_id, {}))
         if "preferred_strategies" in override:
@@ -361,6 +412,16 @@ class ResearcherLoop:
         if "notes" in override:
             plan.notes.extend(list(override.get("notes", [])))
         return plan
+
+    def _effective_population_size(self, plan: NextStepPlan | None) -> int:
+        if plan is None or plan.effective_population_size is None:
+            return self.config.population_size
+        return int(plan.effective_population_size)
+
+    def _effective_seeds_per_experiment(self, plan: NextStepPlan | None) -> int:
+        if plan is None or plan.effective_seeds_per_experiment is None:
+            return self.config.seeds_per_experiment
+        return int(plan.effective_seeds_per_experiment)
 
     def _stage_by_id(self, stage_id: str):
         for stage in self.problem_stages:
@@ -383,6 +444,36 @@ class ResearcherLoop:
             note=note,
             generation=spec.generation,
             parent_ids=list(spec.parent_ids),
+        )
+
+    def _finalize_candidate(
+        self,
+        spec: ExperimentSpec,
+        plan: NextStepPlan,
+        seeds: list[int],
+        *,
+        generation: int,
+        salt: str,
+    ) -> ExperimentSpec:
+        contextual = self._apply_stage_context(spec, plan, seeds)
+        if not self.mutator.is_blocked(contextual.strategy_name, contextual.params, plan.blocked_regions):
+            return contextual
+        replacement = self.mutator.random_spec(
+            generation=generation,
+            seeds=seeds,
+            preferred_strategies=plan.preferred_strategies or [contextual.strategy_name],
+            salt=f"blocked-reroll:{plan.stage_id}:{salt}",
+            blocked_regions=plan.blocked_regions,
+        )
+        rerolled = self._apply_stage_context(replacement, plan, seeds)
+        reroll_note = f"{rerolled.note};blocked_reroll:{contextual.experiment_id}"
+        return ExperimentSpec(
+            strategy_name=rerolled.strategy_name,
+            params=dict(rerolled.params),
+            seeds=seeds,
+            note=reroll_note,
+            generation=rerolled.generation,
+            parent_ids=list(rerolled.parent_ids),
         )
 
     def _write_best_snapshot(self, result: ExperimentResult) -> None:

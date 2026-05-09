@@ -42,6 +42,7 @@ class ExperimentRunner:
         self.persist_flush_interval_s = max(1.0, float(persist_flush_interval_s))
         self._pending_persist: list[ExperimentResult] = []
         self._last_persist_flush_monotonic = time.monotonic()
+        self._persisted_results_count = 0
 
     def run(self, spec: ExperimentSpec, stage: ResearchStage | None = None, *, persist: bool = True) -> ExperimentResult:
         episodes = self._run_episodes(spec)
@@ -101,12 +102,49 @@ class ExperimentRunner:
             return
         pending = list(self._pending_persist)
         self._pending_persist.clear()
-        for result in pending:
+        if self.runtime_control is not None:
+            self.runtime_control.update_status(
+                buffered_results_pending=len(pending),
+                buffered_results_flushing=True,
+                buffered_results_flush_total=len(pending),
+                buffered_results_flush_completed=0,
+                persisted_results_count=self._persisted_results_count,
+                message=f"Flushing {len(pending)} buffered experiment results to disk...",
+                force=True,
+            )
+        last_progress_update = time.monotonic()
+        for index, result in enumerate(pending, start=1):
             self._persist(result.spec, result.episodes, result.summary, result.failure_report)
+            if self.runtime_control is not None:
+                current_time = time.monotonic()
+                if index == len(pending) or (current_time - last_progress_update) >= 1.0:
+                    self.runtime_control.update_status(
+                        buffered_results_pending=max(0, len(pending) - index),
+                        buffered_results_flushing=index < len(pending),
+                        buffered_results_flush_total=len(pending),
+                        buffered_results_flush_completed=index,
+                        persisted_results_count=self._persisted_results_count + index,
+                        message=(
+                            f"Flushing buffered experiment results to disk: {index}/{len(pending)} completed."
+                            if index < len(pending)
+                            else "Buffered experiment results saved to disk."
+                        ),
+                        force=index == len(pending),
+                    )
+                    last_progress_update = current_time
+        self._persisted_results_count += len(pending)
         self._last_persist_flush_monotonic = now
 
     def _queue_persist(self, result: ExperimentResult) -> None:
         self._pending_persist.append(result)
+        if self.runtime_control is not None:
+            self.runtime_control.update_status(
+                buffered_results_pending=len(self._pending_persist),
+                buffered_results_flushing=False,
+                buffered_results_flush_total=0,
+                buffered_results_flush_completed=0,
+                persisted_results_count=self._persisted_results_count,
+            )
         self.flush_pending(force=False)
 
     def _run_episodes(self, spec: ExperimentSpec) -> list[EpisodeResult]:

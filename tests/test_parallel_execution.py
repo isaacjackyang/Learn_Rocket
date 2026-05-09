@@ -5,6 +5,7 @@ from pathlib import Path
 from experiments.run_research_loop import _parse_parallel_workers
 from rocket_auto_research.auto_research.experiment_runner import ExperimentRunner, _is_parallel_safe_for_spec
 from rocket_auto_research.auto_research.experiment_spec import ExperimentSpec
+from rocket_auto_research.auto_research.runtime_control import ResearchRuntimeControl
 from rocket_auto_research.auto_research.simulation import MockRocketSimAdapter
 
 
@@ -62,9 +63,12 @@ class ParallelExecutionTests(unittest.TestCase):
     def test_runner_buffers_persistence_until_flush(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             results_dir = Path(temp_dir) / "runs"
+            control = ResearchRuntimeControl(Path(temp_dir) / "control", min_status_write_interval_s=0.0)
+            control.begin_run(config_path="configs/auto_research.yaml", total_generations=None, population_size=6)
             runner = ExperimentRunner(
                 MockRocketSimAdapter(),
                 results_dir=results_dir,
+                runtime_control=control,
                 adapter_config={"adapter": "competition_platform"},
                 max_workers=1,
                 persist_flush_interval_s=9999,
@@ -75,6 +79,10 @@ class ParallelExecutionTests(unittest.TestCase):
             self.assertFalse((results_dir / spec.experiment_id).exists())
             runner.flush_pending(force=True)
             self.assertTrue((results_dir / spec.experiment_id / "summary.json").exists())
+            status = control.read_status()
+            self.assertEqual(status.get("buffered_results_pending"), 0)
+            self.assertFalse(status.get("buffered_results_flushing"))
+            self.assertEqual(status.get("buffered_results_flush_completed"), 1)
 
 
 if __name__ == "__main__":

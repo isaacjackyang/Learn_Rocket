@@ -23,35 +23,51 @@ class MutationEngine:
         seeds: list[int],
         hypotheses: list[ResearchHypothesis] | None = None,
         mutation_scale: float = 1.0,
+        blocked_regions: list[dict[str, Any]] | None = None,
+        max_attempts: int = 12,
     ) -> ExperimentSpec:
         rng = random.Random(f"mutate:{parent.experiment_id}:{generation}:{','.join(str(seed) for seed in seeds)}")
-        params = copy.deepcopy(parent.params)
-        for key, value in (self.fixed_params or {}).items():
-            params[key] = copy.deepcopy(value)
         chosen_hypothesis = rng.choice(hypotheses) if hypotheses else None
-        if chosen_hypothesis is not None:
-            params = self._apply_adjustments(params, chosen_hypothesis.adjustments, rng, mutation_scale=mutation_scale)
+        fallback_candidate: ExperimentSpec | None = None
+        for attempt in range(max_attempts):
+            params = copy.deepcopy(parent.params)
+            for key, value in (self.fixed_params or {}).items():
+                params[key] = copy.deepcopy(value)
+            if chosen_hypothesis is not None:
+                params = self._apply_adjustments(params, chosen_hypothesis.adjustments, rng, mutation_scale=mutation_scale)
 
-        for key, spec in self.parameter_space.items():
-            if rng.random() > self.mutation_rate:
-                continue
-            params[key] = self._mutate_value(key, params.get(key), spec, rng, mutation_scale=mutation_scale)
+            for key, spec in self.parameter_space.items():
+                if rng.random() > self.mutation_rate:
+                    continue
+                params[key] = self._mutate_value(key, params.get(key), spec, rng, mutation_scale=mutation_scale)
 
-        strategy_name = parent.strategy_name
-        if chosen_hypothesis and chosen_hypothesis.preferred_strategies and rng.random() < 0.6:
-            strategy_name = rng.choice(chosen_hypothesis.preferred_strategies)
+            strategy_name = parent.strategy_name
+            if chosen_hypothesis and chosen_hypothesis.preferred_strategies and rng.random() < 0.6:
+                strategy_name = rng.choice(chosen_hypothesis.preferred_strategies)
 
-        note = f"mutation_from:{parent.experiment_id}"
-        if chosen_hypothesis is not None:
-            note = f"{note};hypothesis:{chosen_hypothesis.hypothesis_id}"
+            note = f"mutation_from:{parent.experiment_id}"
+            if chosen_hypothesis is not None:
+                note = f"{note};hypothesis:{chosen_hypothesis.hypothesis_id}"
 
-        return ExperimentSpec(
-            strategy_name=strategy_name,
-            params=params,
-            seeds=seeds,
-            note=note,
+            candidate = ExperimentSpec(
+                strategy_name=strategy_name,
+                params=params,
+                seeds=seeds,
+                note=note,
+                generation=generation,
+                parent_ids=[parent.experiment_id],
+            )
+            if fallback_candidate is None:
+                fallback_candidate = candidate
+            if not self.is_blocked(candidate.strategy_name, candidate.params, blocked_regions):
+                return candidate
+
+        return self.random_spec(
             generation=generation,
-            parent_ids=[parent.experiment_id],
+            seeds=seeds,
+            preferred_strategies=[fallback_candidate.strategy_name] if fallback_candidate is not None else None,
+            salt=f"blocked-fallback:{parent.experiment_id}",
+            blocked_regions=blocked_regions,
         )
 
     def random_spec(
@@ -60,20 +76,60 @@ class MutationEngine:
         seeds: list[int],
         preferred_strategies: list[str] | None = None,
         salt: str = "",
+        blocked_regions: list[dict[str, Any]] | None = None,
+        max_attempts: int = 24,
     ) -> ExperimentSpec:
         rng = random.Random(f"random:{generation}:{','.join(str(seed) for seed in seeds)}:{salt}")
-        params = {key: self._sample_value(spec, rng) for key, spec in self.parameter_space.items()}
-        for key, value in (self.fixed_params or {}).items():
-            params[key] = copy.deepcopy(value)
         strategies = preferred_strategies or self.strategy_choices
-        strategy_name = rng.choice(strategies)
-        return ExperimentSpec(
-            strategy_name=strategy_name,
-            params=params,
-            seeds=seeds,
-            note="random_initialization",
-            generation=generation,
-        )
+        fallback_candidate: ExperimentSpec | None = None
+        for attempt in range(max_attempts):
+            params = {key: self._sample_value(spec, rng) for key, spec in self.parameter_space.items()}
+            for key, value in (self.fixed_params or {}).items():
+                params[key] = copy.deepcopy(value)
+            strategy_name = rng.choice(strategies)
+            candidate = ExperimentSpec(
+                strategy_name=strategy_name,
+                params=params,
+                seeds=seeds,
+                note="random_initialization",
+                generation=generation,
+            )
+            if fallback_candidate is None:
+                fallback_candidate = candidate
+            if not self.is_blocked(candidate.strategy_name, candidate.params, blocked_regions):
+                return candidate
+        if fallback_candidate is not None:
+            return fallback_candidate
+        raise RuntimeError("Unable to generate random experiment candidate.")
+
+    @staticmethod
+    def is_blocked(
+        strategy_name: str,
+        params: dict[str, Any],
+        blocked_regions: list[dict[str, Any]] | None = None,
+    ) -> bool:
+        if not blocked_regions:
+            return False
+        for region in blocked_regions:
+            region_strategy = region.get("strategy_name")
+            if region_strategy and str(region_strategy) != strategy_name:
+                continue
+            categorical = dict(region.get("categorical", {}))
+            if any(params.get(key) != value for key, value in categorical.items()):
+                continue
+            numeric = dict(region.get("numeric", {}))
+            matched = True
+            for key, bounds in numeric.items():
+                value = params.get(key)
+                if not isinstance(value, (int, float)):
+                    matched = False
+                    break
+                if float(value) < float(bounds["min"]) or float(value) > float(bounds["max"]):
+                    matched = False
+                    break
+            if matched:
+                return True
+        return False
 
     def _apply_adjustments(
         self,

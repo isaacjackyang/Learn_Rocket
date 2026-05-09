@@ -39,6 +39,38 @@ class ResearchLoopComponentTests(unittest.TestCase):
         self.assertEqual(child.params["challenge_scenario_number"], 1)
         self.assertNotEqual(child.experiment_id, parent.experiment_id)
 
+    def test_mutation_engine_avoids_blocked_region(self) -> None:
+        engine = MutationEngine(
+            parameter_space={
+                "kp": {"min": 0.1, "max": 1.0, "sigma": 0.05},
+                "lookahead_time": {"min": 0.5, "max": 2.5, "sigma": 0.1},
+            },
+            mutation_rate=1.0,
+            strategy_choices=["score_based"],
+        )
+        blocked_region = {
+            "strategy_name": "score_based",
+            "numeric": {
+                "kp": {"min": 0.35, "max": 0.65},
+                "lookahead_time": {"min": 1.0, "max": 1.4},
+            },
+            "categorical": {},
+        }
+        parent = ExperimentSpec(
+            strategy_name="score_based",
+            params={"kp": 0.5, "lookahead_time": 1.2},
+            seeds=[0, 1],
+            note="parent",
+        )
+        child = engine.mutate(
+            parent,
+            generation=1,
+            seeds=[2, 3],
+            hypotheses=None,
+            blocked_regions=[blocked_region],
+        )
+        self.assertFalse(engine.is_blocked(child.strategy_name, child.params, [blocked_region]))
+
     def test_crossover_mixes_module_level_settings(self) -> None:
         crossover = StrategyCrossover()
         left = ExperimentSpec(
