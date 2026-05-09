@@ -15,6 +15,49 @@ from rocket_auto_research.auto_research.research_memory import ResearchMemory
 from rocket_auto_research.auto_research.runtime_control import ResearchRuntimeControl
 from rocket_auto_research.dashboard_builder import build_dashboard
 
+PLACEHOLDER_DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rocket Auto Research Dashboard</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: #f3efe3;
+      color: #20211d;
+    }
+    main {
+      max-width: 720px;
+      margin: 64px auto;
+      padding: 32px;
+      background: rgba(255, 250, 240, 0.94);
+      border: 1px solid rgba(32, 33, 29, 0.12);
+      border-radius: 24px;
+      box-shadow: 0 18px 40px rgba(66, 53, 31, 0.12);
+    }
+    h1 {
+      margin-top: 0;
+    }
+    p {
+      line-height: 1.6;
+    }
+    code {
+      font-family: Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Dashboard is starting</h1>
+    <p>The control server is online, but dashboard assets are still being prepared.</p>
+    <p>Refresh this page in a moment, or call <code>/api/rebuild-dashboard</code> after startup if you need a fresh rebuild.</p>
+  </main>
+</body>
+</html>
+"""
+
 
 def describe_config_entry(path: Path, repo_root: Path) -> dict[str, str]:
     relative_value = str(path.relative_to(repo_root)).replace("\\", "/")
@@ -59,7 +102,7 @@ class ResearchDashboardManager:
         self.process: subprocess.Popen[str] | None = None
         self._log_handle = None
         self._lock = threading.RLock()
-        self.build_dashboard()
+        self._build_lock = threading.Lock()
 
     def list_configs(self) -> list[dict[str, str]]:
         configs_dir = self.repo_root / "configs"
@@ -79,7 +122,8 @@ class ResearchDashboardManager:
         }
 
     def build_dashboard(self) -> Path:
-        return build_dashboard(results_dir=self.results_dir, output_dir=self.dashboard_dir)
+        with self._build_lock:
+            return build_dashboard(results_dir=self.results_dir, output_dir=self.dashboard_dir)
 
     def status(self) -> dict[str, object]:
         with self._lock:
@@ -525,6 +569,14 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.FORBIDDEN)
             return
         if not resolved_path.exists() or resolved_path.is_dir():
+            if raw_path in {"", "/"}:
+                data = PLACEHOLDER_DASHBOARD_HTML.encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         content_type = {
@@ -550,4 +602,5 @@ def serve_dashboard(
     manager = ResearchDashboardManager(repo_root=repo_root)
     handler = type("DashboardRequestHandlerInstance", (DashboardRequestHandler,), {"manager": manager})
     server = ThreadingHTTPServer((host, port), handler)
+    threading.Thread(target=manager.build_dashboard, name="dashboard-initial-build", daemon=True).start()
     return server
